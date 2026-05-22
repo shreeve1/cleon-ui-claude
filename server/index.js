@@ -47,13 +47,14 @@ const configuredOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',')
   : [];
 
-function isAllowedOrigin(origin) {
+function isAllowedOrigin(origin, requestHost = null) {
   if (!origin) return true; // Same-origin, Postman, mobile apps
   if (configuredOrigins.includes(origin)) return true;
   // Always allow local development
   try {
     const url = new URL(origin);
     const hostname = url.hostname;
+    if (requestHost && hostname === requestHost.split(':')[0]) return true;
     if (hostname === 'localhost' || hostname === '127.0.0.1') return true;
     // Allow local network IPs (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
     if (/^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/.test(hostname)) return true;
@@ -61,13 +62,13 @@ function isAllowedOrigin(origin) {
   return false;
 }
 
-app.use(cors({
+app.use((req, res, next) => cors({
   origin: (origin, callback) => {
-    if (isAllowedOrigin(origin)) return callback(null, true);
+    if (isAllowedOrigin(origin, req.headers.host)) return callback(null, true);
     callback(new Error('Not allowed by CORS'));
   },
   credentials: true
-}));
+})(req, res, next));
 
 // Rate limiting
 const limiter = rateLimit({
@@ -221,7 +222,7 @@ const wss = new WebSocketServer({
   verifyClient: (info) => {
     // Validate origin
     const origin = info.origin || info.req.headers.origin;
-    if (!isAllowedOrigin(origin)) {
+    if (!isAllowedOrigin(origin, info.req.headers.host)) {
       logger.warn('WebSocket connection rejected: invalid origin', { origin });
       return false;
     }

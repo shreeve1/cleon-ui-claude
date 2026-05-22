@@ -24,6 +24,8 @@ const state = {
   selectedModel: localStorage.getItem('selectedModel') || 'sonnet',
 };
 
+const SW_CLEANUP_RELOAD_KEY = 'cleon-sw-cleanup-reloaded';
+
 // Session object factory
 function createSession(project, sessionId = null) {
   return {
@@ -881,7 +883,40 @@ async function loadCustomCommands(projectPath = null) {
 }
 
 
+async function clearLegacyServiceWorkers() {
+  if (!('serviceWorker' in navigator)) return false;
+
+  try {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    if (registrations.length === 0) {
+      sessionStorage.removeItem(SW_CLEANUP_RELOAD_KEY);
+      return false;
+    }
+
+    await Promise.all(registrations.map(registration => registration.unregister()));
+
+    if ('caches' in window) {
+      const cacheNames = await caches.keys();
+      await Promise.all(cacheNames.map(cacheName => caches.delete(cacheName)));
+    }
+
+    if (navigator.serviceWorker.controller && !sessionStorage.getItem(SW_CLEANUP_RELOAD_KEY)) {
+      sessionStorage.setItem(SW_CLEANUP_RELOAD_KEY, '1');
+      window.location.reload();
+      return true;
+    }
+
+    sessionStorage.removeItem(SW_CLEANUP_RELOAD_KEY);
+  } catch (err) {
+    console.warn('[ServiceWorker] Cleanup failed:', err);
+  }
+
+  return false;
+}
+
 async function init() {
+  if (await clearLegacyServiceWorkers()) return;
+
   const status = await api('/api/auth/status').catch(() => ({ needsSetup: true }));
   
   if (status.needsSetup) {
@@ -3583,6 +3618,18 @@ function formatDate(isoString) {
   return d.toLocaleDateString();
 }
 
+async function readJsonResponse(res, url) {
+  const text = await res.text();
+
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch (err) {
+    const contentType = res.headers.get('content-type') || 'unknown content type';
+    const snippet = text.slice(0, 80).replace(/\s+/g, ' ').trim();
+    throw new Error(`Expected JSON from ${url}, got ${res.status} ${contentType}: ${snippet}`);
+  }
+}
+
 async function api(url, body = null) {
   const opts = { headers: {} };
   
@@ -3597,7 +3644,7 @@ async function api(url, body = null) {
   }
   
   const res = await fetch(url, opts);
-  const data = await res.json();
+  const data = await readJsonResponse(res, url);
   
   if (!res.ok) {
     if (res.status === 401 || res.status === 403) {
@@ -3686,14 +3733,14 @@ async function uploadFile(file) {
   });
 
   if (!res.ok) {
-    const data = await res.json().catch(err => {
+    const data = await readJsonResponse(res, '/api/upload').catch(err => {
       console.error('[Upload] Failed to parse error response:', err);
       return {};
     });
     throw new Error(data.error || 'File upload failed');
   }
 
-  return res.json();
+  return readJsonResponse(res, '/api/upload');
 }
 
 // Process and add a file as an attachment
@@ -4065,7 +4112,7 @@ async function loadFileTree() {
       throw new Error('Failed to load file tree');
     }
 
-    const data = await res.json();
+    const data = await readJsonResponse(res, res.url);
     // Cache top-level items
     state.fileEditor.dirCache[''] = data.items;
     state.fileEditor.projectPath = session.project.name;
@@ -4097,7 +4144,7 @@ async function loadDirectory(path) {
       return [];
     }
 
-    const data = await res.json();
+    const data = await readJsonResponse(res, res.url);
     state.fileEditor.dirCache[path] = data.items;
     return data.items;
   } catch (err) {
@@ -4278,11 +4325,11 @@ async function openFile(filePath) {
     });
 
     if (!res.ok) {
-      const err = await res.json();
+      const err = await readJsonResponse(res, res.url);
       throw new Error(err.error || 'Failed to load file');
     }
 
-    const data = await res.json();
+    const data = await readJsonResponse(res, res.url);
 
     if (!data.editable) {
       alert('This file type cannot be edited in the browser.');
@@ -4372,7 +4419,7 @@ async function saveCurrentFile() {
     });
 
     if (!res.ok) {
-      const err = await res.json();
+      const err = await readJsonResponse(res, res.url);
       throw new Error(err.error || 'Failed to save file');
     }
 
