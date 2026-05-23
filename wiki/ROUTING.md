@@ -41,5 +41,5 @@ Use this file after reading `index.md` when narrowing a wiki-backed question to 
 
 Candidate routes are discoverability aids only; do not treat candidates as promoted knowledge.
 
-- Pages:
-- Keywords:
+- Pages: `wiki/candidates/source-readme.md` (candidate; non-authoritative)
+- Keywords: README, product overview, install, run, PM2, configuration, API, tests, troubleshooting, WebSocket, SSE, replay, auth

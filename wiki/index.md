@@ -26,14 +26,15 @@ Candidate rows are discoverability aids only; do not treat them as promoted know
 
 | Candidate | Summary | Sources | Created | Status |
 |-----------|---------|---------|---------|--------|
+| `wiki/candidates/source-readme.md` | Source summary for product overview, install/run/config/API/testing baseline. | `wiki/raw/README.md` | 2026-05-23 | candidate |
 
 ## Initial Ingest Shortlist
 
-No sources have been ingested yet. Recommended first sources:
+Recommended next sources:
 
 | Source | Why It Matters | Status |
 |--------|----------------|--------|
-| `README.md` | Public product overview, install/run/config/API/testing baseline. | proposed |
+| `README.md` | Public product overview, install/run/config/API/testing baseline. | ingested as candidate |
 | `CLAUDE.md` | Existing project-specific commands, architecture, gotchas, and agent guidance. | proposed |
 | `CONTEXT.md` | Domain language for Event Delivery, SSE Replay, Task Events, and Session Status Snapshot. | proposed |
 | `package.json` | Scripts, dependencies, module type, and test entry points. | proposed |
