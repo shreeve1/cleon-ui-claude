@@ -57,6 +57,14 @@ describe('SSE endpoint (server/index.js)', () => {
     expect(sseBody).toContain('replayBufferToSSE');
   });
 
+  it('replays buffer during replay grace period after streaming ends', () => {
+    const sseStart = indexJs.indexOf("app.get('/api/events'");
+    const sseEnd = indexJs.indexOf('});', indexJs.indexOf("req.on('close'", sseStart));
+    const sseBody = indexJs.slice(sseStart, sseEnd);
+
+    expect(sseBody).toContain('hasReplayBuffer(s.sessionId)');
+  });
+
   it('subscribes to event bus for ongoing events', () => {
     const sseStart = indexJs.indexOf("app.get('/api/events'");
     const sseEnd = indexJs.indexOf('});', indexJs.indexOf("req.on('close'", sseStart));
@@ -309,6 +317,11 @@ describe('old WS subscription protocol removed (public/app.js)', () => {
 
 // ─── WebSocket replacement mechanism (claude.js) ─────────────────
 describe('WebSocket replacement mechanism (server/claude.js)', () => {
+  it('activity events use Event Delivery for replayable latest state', () => {
+    expect(claudeJs).toContain("import { eventDelivery } from './event-delivery.js'");
+    expect(claudeJs).toContain('eventDelivery.deliver(username, event)');
+  });
+
   it('resubscribeSession replaces ws on the sessionInfo object', () => {
     expect(claudeJs).toMatch(/sessionInfo\.ws = newWs/);
   });

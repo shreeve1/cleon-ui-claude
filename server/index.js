@@ -20,7 +20,7 @@ import { processUpload, validateFile } from './uploads.js';
 import logger from './logger.js';
 import { subscribe, publish } from './bus.js';
 import { getSessionsForUser } from './session-registry.js';
-import { replayBufferToSSE } from './broadcast.js';
+import { replayBufferToSSE, hasReplayBuffer } from './broadcast.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -180,7 +180,7 @@ app.get('/api/events', (req, res) => {
   const userSessions = getSessionsForUser(user.username);
   res.write(`data: ${JSON.stringify({ type: 'state-snapshot', sessions: userSessions })}\n\n`);
 
-  for (const s of userSessions.filter(s => s.status === 'streaming')) {
+  for (const s of userSessions.filter(s => s.status === 'streaming' || hasReplayBuffer(s.sessionId))) {
     replayBufferToSSE(s.sessionId, res);
   }
 

@@ -1,325 +1,202 @@
 # Cleon UI
 
-> **Historical Note:** This project was originally developed under the name "Claude Lite" and was rebranded to "Cleon UI" in February 2025.
-
-A lightweight, mobile-first web interface for Claude Code featuring a retro 80s neon arcade aesthetic. Built with vanilla JavaScript for maximum simplicity and minimal dependencies.
+Mobile-first web UI for Claude Code sessions. Cleon UI runs as a small Node/Express server and serves a vanilla-JS single-page app with WebSocket input, SSE output streaming, session replay, file browsing, uploads, model selection, and single-user auth.
 
 ## Features
 
-- **Retro Neon Aesthetic**: Vibrant 80s-inspired design with cyan/magenta/yellow accents
-- **Mobile-First**: Optimized for touch interfaces and small screens
-- **Lightweight**: Vanilla JavaScript, no heavy frameworks
-- **Real-Time Streaming**: Server-Sent Events for live Claude responses
-- **Project Management**: Search, create, and organize Claude Code projects
-- **File Upload**: Drag-and-drop support for images, text, PDFs, and markdown
-- **Slash Commands**: Quick access to common actions
-- **Mode Switching**: Toggle between default, plan, and bypass modes
-- **Favorites System**: Pin frequently-used projects
-- **User Authentication**: Multi-user support with JWT-based auth
-- **Token Usage Tracking**: Monitor API usage per session
+- Remote Claude Code access from desktop or mobile browser
+- Single-user registration and JWT login
+- Project/session discovery from `~/.claude/projects/`
+- New and resumed Claude SDK sessions
+- WebSocket client input for chat, abort, questions, and plan approval
+- SSE server output with replay buffer for reconnects
+- File browser/editor for project files
+- Image, text, markdown, and PDF attachment support
+- Slash commands from global and project command files
+- Model picker for Haiku, Sonnet, and Opus tiers
+- PM2 production config
 
-## Quick Start
+## Requirements
 
-### Prerequisites
+- Node.js 18+
+- npm
+- Claude Code / Anthropic credentials available to the Claude Agent SDK
+- `JWT_SECRET` with at least 32 characters for production
 
-- Node.js 18+ and npm
-- Anthropic API key
+## Install
 
-### Installation
-
-1. Clone the repository:
 ```bash
-git clone https://github.com/shreeve1/cleon-ui.git
-cd cleon-ui
-```
-
-2. Install dependencies:
-```bash
-npm install
-```
-
-3. Configure environment variables:
-```bash
+git clone git@github.com:shreeve1/cleon-ui-claude.git
+cd cleon-ui-claude
+npm ci
 cp .env.example .env
-# Edit .env and add your ANTHROPIC_API_KEY
 ```
 
-4. Start the server:
+Edit `.env` and set at minimum:
+
+```bash
+JWT_SECRET=change-this-to-a-random-secure-string-at-least-32-chars
+```
+
+If you are not relying on existing Claude Code auth, also set Anthropic credentials expected by your Claude SDK setup.
+
+## Run
+
+Development:
+
+```bash
+npm run dev
+```
+
+Production without PM2:
+
 ```bash
 npm start
 ```
 
-5. Open your browser to `http://localhost:3010`
+Default bind:
 
-### First-Time Setup
+```text
+http://localhost:3010
+http://<LAN-IP>:3010
+```
 
-1. Create an account on the welcome screen
-2. Log in with your credentials
-3. Create or search for a Claude Code project
-4. Start chatting with Claude!
+`HOST` defaults to `0.0.0.0`, so LAN clients can connect when host/network firewall rules allow port `3010`.
+
+## PM2
+
+Start or restart with the repository PM2 config:
+
+```bash
+npm run pm2
+```
+
+Useful commands:
+
+```bash
+pm2 status cleon-ui
+pm2 logs cleon-ui
+pm2 restart cleon-ui
+pm2 save
+```
+
+Enable startup after reboot:
+
+```bash
+pm2 startup systemd -u "$USER" --hp "$HOME"
+pm2 save
+```
+
+`ecosystem.config.cjs` starts one forked process named `cleon-ui` on `0.0.0.0:3010`. It also reads `~/.claude/settings.json` at process start and forwards supported Anthropic environment values into PM2. Restart PM2 after changing those settings.
 
 ## Configuration
 
-### Environment Variables
+Environment variables:
 
-Create a `.env` file in the project root:
+| Name | Default | Notes |
+| --- | --- | --- |
+| `PORT` | `3010` | HTTP port |
+| `HOST` | `0.0.0.0` | Bind address |
+| `NODE_ENV` | unset | `production` requires `JWT_SECRET` |
+| `JWT_SECRET` | none | Required in production, minimum 32 chars |
+| `ALLOWED_ORIGINS` | none | Comma-separated extra origins |
+| `CONTEXT_WINDOW` | model default / `200000` fallback | Token usage fallback |
+| `LOG_LEVEL` | `info` | Winston log level |
 
-```bash
-# Server Configuration
-PORT=3010
-HOST=0.0.0.0
-NODE_ENV=production
+Localhost, same-host origins, and RFC1918 LAN IP origins are allowed automatically. Add public domains to `ALLOWED_ORIGINS`.
 
-# Security (REQUIRED for production)
-JWT_SECRET=change-this-to-a-random-secure-string-at-least-32-chars
+## Data
 
-# CORS: Allowed origins (comma-separated)
-ALLOWED_ORIGINS=https://your-domain.com
+- Auth database: `~/.cleon-ui/auth.db`
+- Claude journals: `~/.claude/projects/`
+- Legacy migration: `~/.claude-lite/` is renamed to `~/.cleon-ui/` on first startup when needed
+- Temporary uploads: `<project>/.claude-uploads/`, removed after each request finishes
 
-# Claude SDK Configuration
-ANTHROPIC_API_KEY=your-api-key-here
-CONTEXT_WINDOW=200000
-
-# Optional: Logging
-LOG_LEVEL=info
-```
-
-### User Data Location
-
-User accounts and session data are stored in:
-- **Location**: `~/.cleon-ui/`
-- **Files**: `users.db`, `sessions.db`, `messages.db`
-
-**Data Migration**: If upgrading from Claude Lite, your data will be automatically migrated from `~/.claude-lite/` to `~/.cleon-ui/` on first startup.
+This is a single-user app. Registration is only allowed before the first account exists.
 
 ## Architecture
 
-### Project Structure
-
-```
-cleon-ui/
-├── public/
-│   ├── index.html          # Main UI (single-page app)
-│   ├── style.css           # Neon aesthetic styling
-│   └── app.js              # Client-side logic
-├── server/
-│   ├── index.js            # Express server & SSE
-│   ├── auth.js             # User authentication
-│   ├── projects.js         # Project management
-│   ├── sessions.js         # Session handling
-│   └── messages.js         # Message persistence
-├── specs/                  # Technical specifications
-├── sessions/               # Development session notes
-├── package.json
-├── .env.example
-└── README.md
+```text
+public/
+  index.html       SPA markup
+  app.js           UI, WebSocket, SSE, rendering, editor
+  style.css        neon theme
+  sw.js            unregisters legacy service workers
+server/
+  index.js         Express, middleware, routes, WS, SSE
+  auth.js          single-user auth and JWT validation
+  claude.js        Claude Agent SDK integration
+  projects.js      Claude project/session discovery
+  files.js         file tree, read, write APIs
+  uploads.js       attachment validation and processing
+  bus.js           per-user event pub/sub
+  broadcast.js     per-session replay buffer
+  session-registry.js
+  tasks.js         tool task lifecycle tracking
 ```
 
-### Technology Stack
+Transport model:
 
-**Frontend:**
-- Vanilla JavaScript (no frameworks)
-- CSS Grid & Flexbox for layout
-- Server-Sent Events (SSE) for streaming
+- Browser to server: WebSocket upgrade at `/`
+- Server to browser: SSE at `/api/events?token=...`
+- Replay: `server/broadcast.js` buffers recent session events for reconnecting SSE clients
 
-**Backend:**
-- Node.js + Express
-- better-sqlite3 for data persistence
-- JWT for authentication
-- Anthropic SDK for Claude API
+Claude integration uses `@anthropic-ai/claude-agent-sdk` `query()`. The server passes through model and permission mode choices, intercepts `AskUserQuestion` and `ExitPlanMode`, and routes those prompts back to the browser.
 
-### How It Works
+## API
 
-1. **Authentication**: Users authenticate via JWT tokens stored in localStorage
-2. **Project Management**: Search/create projects in `~/Documents/claude`
-3. **Chat Sessions**: Each conversation creates a session with message history
-4. **Streaming**: Claude responses stream via SSE from server to client
-5. **Persistence**: Messages, sessions, and projects stored in SQLite
+Public:
 
-## API Endpoints
+- `GET /api/health`
+- `GET /api/auth/status`
+- `POST /api/auth/register`
+- `POST /api/auth/login`
 
-### Authentication
-- `POST /api/auth/register` - Create new account
-- `POST /api/auth/login` - Authenticate user
-- `GET /api/auth/validate` - Verify JWT token
+Authenticated:
 
-### Projects
-- `GET /api/projects/search?q=query` - Search projects
-- `POST /api/projects/create` - Create new project
-- `GET /api/projects/:id` - Get project details
+- `GET /api/projects/search?q=...`
+- `GET /api/projects/:name/path`
+- `GET /api/projects/:name/sessions`
+- `GET /api/projects/:name/sessions/:sessionId/messages`
+- `GET /api/projects/:name/files/search?q=...`
+- `GET /api/files/:project/tree`
+- `GET /api/files/:project/ls?path=...`
+- `GET /api/files/:project/*`
+- `PUT /api/files/:project/*`
+- `GET /api/commands?projectPath=...`
+- `POST /api/upload`
+- `GET /api/events?token=...`
 
-### Sessions
-- `GET /api/sessions` - List user sessions
-- `POST /api/sessions` - Create new session
-- `GET /api/sessions/:id/messages` - Get session history
+WebSocket messages:
 
-### Chat
-- `POST /api/chat` - Send message to Claude (returns SSE stream)
+- `chat`
+- `abort`
+- `question-response`
+- `plan-response`
+- `ping`
 
-## Browser Support
-
-- Chrome/Edge 90+
-- Firefox 88+
-- Safari 14+
-- Mobile browsers (iOS Safari, Chrome Android)
-
-Requires support for:
-- ES6+ JavaScript
-- CSS Grid
-- Server-Sent Events
-- Fetch API
-- localStorage
-
-## Security Notes
-
-### Production Deployment
-
-**Required:**
-1. Set strong `JWT_SECRET` in production
-2. Use HTTPS (never HTTP in production)
-3. Protect `.env` file (never commit to git)
-4. Configure CORS appropriately
-5. Set secure cookie flags if using cookies
-
-**User Data:**
-- Passwords are hashed with bcrypt (10 rounds)
-- JWTs expire (check auth.js for duration)
-- User data stored locally in `~/.cleon-ui/`
-
-### Known Limitations
-
-- Single-server deployment (no clustering)
-- SQLite database (not suitable for high concurrency)
-- File-based session storage
-- No rate limiting (implement if needed)
-
-## Production Deployment
-
-### Running in Production
-
-1. Set environment to production:
-```bash
-NODE_ENV=production node server/index.js
-```
-
-2. Or use PM2 for process management:
-```bash
-npm install -g pm2
-pm2 start server/index.js --name cleon-ui
-pm2 save
-pm2 startup  # Enable auto-start on reboot
-```
-
-### Reverse Proxy (HTTPS)
-
-For production, run behind a reverse proxy like nginx or Caddy for HTTPS:
-
-**Caddy (recommended - automatic HTTPS):**
-```
-your-domain.com {
-    reverse_proxy localhost:3010
-}
-```
-
-**Nginx:**
-```nginx
-server {
-    listen 443 ssl;
-    server_name your-domain.com;
-
-    ssl_certificate /path/to/cert.pem;
-    ssl_certificate_key /path/to/key.pem;
-
-    location / {
-        proxy_pass http://localhost:3010;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-    }
-}
-```
-
-## Development
-
-### Running in Development
+## Tests
 
 ```bash
-npm start
+npm test
+npx vitest run tests/unit/sse-task-updates.test.js
 ```
 
-Server runs on `http://localhost:3010` with auto-restart via nodemon.
-
-### Project Directory Structure
-
-Projects are expected in:
-```
-~/Documents/claude/
-├── project-name/
-│   ├── .claude/
-│   │   └── sessions/
-│   └── ... (project files)
-```
-
-### Adding New Features
-
-1. Update specs in `specs/` directory
-2. Implement backend changes in `server/`
-3. Update frontend in `public/`
-4. Document in session notes under `sessions/`
-5. Update this README if needed
-
-### Debugging
-
-- Server logs: Console output
-- Client logs: Browser DevTools console
-- Database: SQLite files in `~/.cleon-ui/`
-- Session notes: Check `sessions/` for implementation details
+E2E tests under `tests/e2e/` use Playwright and load `public/index.html` with `file://`; they do not require the server.
 
 ## Troubleshooting
 
-### "Authentication failed"
-- Check JWT_SECRET matches between restarts
-- Clear localStorage and log in again
-- Verify `.cleon-ui/users.db` exists
+If login fails after restart, clear browser local storage and confirm `JWT_SECRET` did not change.
 
-### "Cannot find project directory"
-- Ensure `~/Documents/claude/` exists
-- Check project directory structure
-- Verify read permissions
+If the UI reports HTML where JSON was expected, confirm you are opening the app with port `3010` and refresh once to clear any old service worker cache.
 
-### "Failed to connect to Claude"
-- Verify ANTHROPIC_API_KEY is set correctly
-- Check network connectivity
-- Review server logs for API errors
+If LAN clients cannot connect, check that the server is listening on `0.0.0.0:3010` and that host/network firewall rules allow the port.
 
-### Data Migration Issues
-- Check `~/.claude-lite/` exists before migration
-- Verify write permissions for `~/.cleon-ui/`
-- Check server startup logs for migration messages
-
-## Contributing
-
-This is a personal/experimental project, but suggestions and improvements are welcome:
-
-1. Document issues with clear reproduction steps
-2. Include relevant logs and screenshots
-3. Specify browser/OS versions
-4. Test changes thoroughly before submitting
+```bash
+curl http://127.0.0.1:3010/api/health
+curl http://<LAN-IP>:3010/api/health
+```
 
 ## License
 
-MIT License
-
-## Credits
-
-Built with:
-- [Anthropic Claude API](https://www.anthropic.com/)
-- [Express.js](https://expressjs.com/)
-- [better-sqlite3](https://github.com/WiseLibs/better-sqlite3)
-- Retro neon aesthetic inspired by 80s arcade culture
-
----
-
-**Cleon UI** - A lightweight, beautiful interface for Claude Code
+MIT

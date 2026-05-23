@@ -8,6 +8,7 @@ import { broadcastToSession, startSessionBuffer } from './broadcast.js';
 import { publish } from './bus.js';
 import { createActivityTracker } from './activity.js';
 import { register, setStatus } from './session-registry.js';
+import { eventDelivery } from './event-delivery.js';
 
 // Constants
 const DEFAULT_CONTEXT_WINDOW = 200000;
@@ -446,7 +447,7 @@ export async function handleChat(msg, ws, username) {
       startSessionBuffer(currentSessionId);
       register(currentSessionId, { username, projectPath, projectName: projectDisplayName, displayName: projectDisplayName, status: 'streaming' });
       publish(username, { type: 'session-status', sessionId: currentSessionId, status: 'streaming' });
-      sessionInfo.activityTracker = createActivityTracker((event) => publish(username, event), currentSessionId);
+      sessionInfo.activityTracker = createActivityTracker((event) => eventDelivery.deliver(username, event), currentSessionId);
     }
 
     // Process streaming messages
@@ -461,7 +462,7 @@ export async function handleChat(msg, ws, username) {
           sessionId: currentSessionId
         }, username);
         publish(username, { type: 'session-status', sessionId: currentSessionId, status: 'streaming' });
-        sessionInfo.activityTracker = createActivityTracker((event) => publish(username, event), currentSessionId);
+        sessionInfo.activityTracker = createActivityTracker((event) => eventDelivery.deliver(username, event), currentSessionId);
       }
     });
 
