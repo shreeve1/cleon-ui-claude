@@ -64,7 +64,7 @@ Single-page vanilla JS. Three files:
 No build step. CSP in `server/index.js` permits inline styles, `cdn.jsdelivr.net` for scripts/styles (monaco-editor), and `data:`/`blob:` images.
 
 ### Production
-PM2 entry at `ecosystem.config.cjs` reads `~/.claude/settings.json` `env` block at start time and forwards `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, and the per-tier `ANTHROPIC_DEFAULT_*_MODEL` vars into the process env. Changing those settings requires a PM2 restart (settings are read once per spawn). CORS allows configured `ALLOWED_ORIGINS` plus localhost and RFC1918 ranges unconditionally.
+PM2 entry at `ecosystem.config.cjs` reads `~/.claude/settings.json` `env` block at start time and forwards `ANTHROPIC_BASE_URL` and the per-tier `ANTHROPIC_DEFAULT_*_MODEL` vars into the process env. `ANTHROPIC_AUTH_TOKEN` is intentionally excluded to allow OAuth via `~/.anthropic/auth.json` (matching system Claude Code auth). Changing those settings requires a PM2 restart (settings are read once per spawn). CORS allows configured `ALLOWED_ORIGINS` plus localhost and RFC1918 ranges unconditionally.
 
 ## Project-specific gotchas
 - The project path-to-Claude-projects-dir encoding is convention from Claude Code itself (`/home/x/foo` → `-home-x-foo`). When touching `loadSessionHistory` or anything in `server/projects.js`, preserve this.
