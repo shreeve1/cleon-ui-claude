@@ -27,6 +27,13 @@ const MODEL_CONTEXT_WINDOWS = {
   'default': 200000
 };
 
+function getClaudeSdkEnv() {
+  const env = { ...process.env };
+  delete env.ANTHROPIC_API_KEY;
+  delete env.ANTHROPIC_AUTH_TOKEN;
+  return env;
+}
+
 function formatConversationHistory(messages, maxChars = 100000) {
   if (!messages || messages.length === 0) return '';
 
@@ -298,7 +305,7 @@ export async function handleChat(msg, ws, username) {
     permissionMode,
     systemPrompt: { type: 'preset', preset: 'claude_code' },
     settingSources: ['project', 'user', 'local'],
-    env: { ...process.env, DEBUG_CLAUDE_AGENT_SDK: '1' },
+    env: { ...getClaudeSdkEnv(), DEBUG_CLAUDE_AGENT_SDK: '1' },
     stderr: (data) => {
       console.log(`[Claude:stderr] ${data.trimEnd()}`);
     },
