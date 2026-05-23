@@ -31,13 +31,15 @@ const server = http.createServer(app);
 
 // Security middleware
 app.use(helmet({
+  hsts: false,
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
       scriptSrc: ["'self'", "https://cdn.jsdelivr.net"],
       connectSrc: ["'self'", "ws:", "wss:"],
-      imgSrc: ["'self'", "data:", "blob:", "https://cdn.jsdelivr.net"]
+      imgSrc: ["'self'", "data:", "blob:", "https://cdn.jsdelivr.net"],
+      upgradeInsecureRequests: null
     }
   }
 }));
