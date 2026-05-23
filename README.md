@@ -40,12 +40,9 @@ JWT_SECRET=change-this-to-a-random-secure-string-at-least-32-chars
 
 ### Authentication with Anthropic
 
-Cleon UI uses the Claude Agent SDK, which supports two authentication methods (in priority order):
+Cleon UI uses the Claude Agent SDK with OAuth only. The SDK reads tokens from `~/.anthropic/auth.json`, the same authentication used by system Claude Code.
 
-1. **OAuth (default, recommended)**: SDK reads tokens from `~/.anthropic/auth.json` (same as system Claude Code)
-2. **API Key**: Set `ANTHROPIC_AUTH_TOKEN` environment variable or add to `~/.claude/settings.json` `env` section
-
-**When running via PM2**, the config intentionally excludes `ANTHROPIC_AUTH_TOKEN` from settings injection, ensuring OAuth is used by default. If you need API key auth, set it directly in your shell environment or `.env` file before starting PM2.
+PM2 intentionally does not inject auth tokens from `~/.claude/settings.json`. Restart PM2 after refreshing Claude Code OAuth credentials.
 
 ## Run
 
@@ -94,7 +91,7 @@ pm2 startup systemd -u "$USER" --hp "$HOME"
 pm2 save
 ```
 
-`ecosystem.config.cjs` starts one forked process named `cleon-ui` on `0.0.0.0:3010`. It reads `~/.claude/settings.json` at process start and forwards supported Anthropic environment values (base URL, model overrides) into PM2, **excluding** `ANTHROPIC_AUTH_TOKEN`. This allows the Claude SDK to use OAuth from `~/.anthropic/auth.json`, matching the system Claude Code authentication. Restart PM2 after changing settings.
+`ecosystem.config.cjs` starts one forked process named `cleon-ui` on `0.0.0.0:3010`. It reads `~/.claude/settings.json` at process start and forwards supported non-secret Anthropic environment values (base URL, model overrides) into PM2. Auth stays OAuth-only via `~/.anthropic/auth.json`. Restart PM2 after changing settings or refreshing OAuth credentials.
 
 ## Configuration
 

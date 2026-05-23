@@ -14,14 +14,10 @@ function loadClaudeSettings() {
     const content = fs.readFileSync(settingsPath, 'utf8');
     const settings = JSON.parse(content);
 
-    // Extract Anthropic settings from env section
-    // NOTE: ANTHROPIC_AUTH_TOKEN is intentionally EXCLUDED from this list.
-    // When absent, the Claude SDK will use OAuth from ~/.anthropic/auth.json,
-    // matching the system Claude Code authentication method.
-    // Only inject ANTHROPIC_AUTH_TOKEN here if you explicitly want API key auth.
+    // Extract non-secret Anthropic settings from env section.
+    // Auth is OAuth-only via ~/.anthropic/auth.json, matching system Claude Code.
     const envSettings = {};
     if (settings.env) {
-      // REMOVED: ANTHROPIC_AUTH_TOKEN (use OAuth by default)
       if (settings.env.ANTHROPIC_BASE_URL) {
         envSettings.ANTHROPIC_BASE_URL = settings.env.ANTHROPIC_BASE_URL;
       }
@@ -37,7 +33,7 @@ function loadClaudeSettings() {
     }
 
     console.log('[PM2] Loaded settings from ~/.claude/settings.json');
-    console.log('[PM2] Auth: OAuth (via ~/.anthropic/auth.json)');
+    console.log('[PM2] Auth: OAuth-only via ~/.anthropic/auth.json');
     console.log('[PM2] API URL:', envSettings.ANTHROPIC_BASE_URL || 'default');
     console.log('[PM2] Haiku Model:', envSettings.ANTHROPIC_DEFAULT_HAIKU_MODEL || 'default');
 
