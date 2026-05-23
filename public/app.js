@@ -4,6 +4,7 @@ const PREVIEW_TRUNCATE_LENGTH = 100;
 const TOOL_COMMAND_PREVIEW_LENGTH = 80;
 const WS_RECONNECT_MAX_DELAY = 30000;
 const SEARCH_DEBOUNCE_MS = 300;
+const DEFAULT_MODEL = 'opus';
 
 const MAX_SESSIONS = 5;
 
@@ -21,7 +22,7 @@ const state = {
   searchTimeout: null,
   customCommands: [],
   forceNewTab: false,
-  selectedModel: localStorage.getItem('selectedModel') || 'sonnet',
+  selectedModel: localStorage.getItem('selectedModel') || DEFAULT_MODEL,
 };
 
 const SW_CLEANUP_RELOAD_KEY = 'cleon-sw-cleanup-reloaded';
@@ -3128,6 +3129,7 @@ async function searchProjects(query) {
 
 async function selectProject(name, path, displayName, skipHashUpdate = false) {
   const project = { name, path, displayName };
+  setModel(DEFAULT_MODEL);
 
   // Check if we can reuse the active session
   const forceNewTab = state.forceNewTab;
@@ -3389,6 +3391,7 @@ newSessionBtn.addEventListener('click', () => {
   const session = getActiveSession();
   if (!session) return;
 
+  setModel(DEFAULT_MODEL);
   session.sessionId = null;
   updateHash(session.project.name);
   clearMessages(session);
