@@ -72,7 +72,7 @@ describe('server/claude.js - code structure', () => {
 
   describe('processQueryStream signature', () => {
     it('should still accept sessionInfo as a parameter', () => {
-      expect(claudeJs).toMatch(/async function processQueryStream\(queryInstance,\s*ws,\s*sessionInfo,\s*onSessionId\)/);
+      expect(claudeJs).toMatch(/async function processQueryStream\(queryInstance,\s*_?ws,\s*sessionInfo,\s*onSessionId\)/);
     });
   });
 

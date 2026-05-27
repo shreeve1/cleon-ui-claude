@@ -177,7 +177,7 @@ const toolUseToTaskMap = new Map();
  * Used both for initial query and after question responses
  * Captures model information and adds it to messages
  */
-async function processQueryStream(queryInstance, ws, sessionInfo, onSessionId) {
+async function processQueryStream(queryInstance, _ws, sessionInfo, onSessionId) {
   if (sessionInfo.activityTracker) {
     sessionInfo.activityTracker.startThinking();
   }
@@ -193,6 +193,7 @@ async function processQueryStream(queryInstance, ws, sessionInfo, onSessionId) {
       const usage = extractTokenUsage(message.modelUsage);
       if (usage && usage.model) {
         sessionModels.set(message.session_id, usage.model);
+        console.log(`[Claude] Session ${message.session_id?.slice(0,8)} used model: ${usage.model}`);
       }
       if (usage) {
         sendMessage(sessionInfo.ws, {
@@ -600,7 +601,7 @@ export function resubscribeSession(sessionId, newWs) {
  * Handle question response from frontend
  * Resolves the pending promise from the canUseTool callback
  */
-export async function handleQuestionResponse(sessionId, toolUseId, answers) {
+export async function handleQuestionResponse(_sessionId, toolUseId, answers) {
   console.log(`[Claude] Received question response for tool ${toolUseId}`);
   console.log(`[Claude] Answer payload:`, JSON.stringify(answers, null, 2));
 
@@ -622,7 +623,7 @@ export async function handleQuestionResponse(sessionId, toolUseId, answers) {
  * Handle plan confirmation response from frontend
  * Resolves the pending promise from the canUseTool callback
  */
-export async function handlePlanResponse(sessionId, toolUseId, approved, feedback) {
+export async function handlePlanResponse(_sessionId, toolUseId, approved, feedback) {
   console.log(`[Claude] Received plan response for tool ${toolUseId}, approved: ${approved}`);
 
   const callback = pendingPlanConfirmations.get(toolUseId);
