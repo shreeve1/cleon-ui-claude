@@ -161,6 +161,47 @@ function parseHistoryEntry(entry) {
 	return null;
 }
 
+// Timeout for waiting on user responses to AskUserQuestion / ExitPlanMode
+const TOOL_RESPONSE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Creates a promise that races between a callback from the Map and a timeout.
+ * Used for canUseTool blocking on AskUserQuestion and ExitPlanMode.
+ *
+ * @param {Map} callbacksMap - pendingQuestionCallbacks or pendingPlanConfirmations
+ * @param {string} key - toolUseID
+ * @param {AbortSignal} signal - SDK abort signal
+ * @param {string} cancelMessage - rejection message on abort
+ * @returns {Promise}
+ */
+export function createPendingPromise(callbacksMap, key, signal, cancelMessage) {
+	return new Promise((resolve, reject) => {
+		const timer = setTimeout(() => {
+			callbacksMap.delete(key);
+			reject(new Error("User did not respond in time"));
+		}, TOOL_RESPONSE_TIMEOUT_MS);
+
+		callbacksMap.set(key, {
+			resolve: (val) => {
+				clearTimeout(timer);
+				callbacksMap.delete(key);
+				resolve(val);
+			},
+			reject: (err) => {
+				clearTimeout(timer);
+				callbacksMap.delete(key);
+				reject(err);
+			},
+		});
+
+		signal.addEventListener("abort", () => {
+			clearTimeout(timer);
+			callbacksMap.delete(key);
+			reject(new Error(cancelMessage));
+		});
+	});
+}
+
 // Track active sessions for abort capability
 const activeSessions = new Map();
 
@@ -378,17 +419,14 @@ export async function handleChat(msg, ws, username) {
 					username,
 				);
 
-				// Wait for user response
+				// Wait for user response (with timeout)
 				try {
-					const answers = await new Promise((resolve, reject) => {
-						pendingQuestionCallbacks.set(toolUseID, { resolve, reject });
-
-						// Handle abort signal
-						signal.addEventListener("abort", () => {
-							pendingQuestionCallbacks.delete(toolUseID);
-							reject(new Error("Question cancelled"));
-						});
-					});
+					const answers = await createPendingPromise(
+						pendingQuestionCallbacks,
+						toolUseID,
+						signal,
+						"Question cancelled",
+					);
 
 					console.log(`[Claude] Question answered - toolUseId: ${toolUseID}`);
 
@@ -428,17 +466,14 @@ export async function handleChat(msg, ws, username) {
 					username,
 				);
 
-				// Wait for user approval/rejection
+				// Wait for user approval/rejection (with timeout)
 				try {
-					const response = await new Promise((resolve, reject) => {
-						pendingPlanConfirmations.set(toolUseID, { resolve, reject });
-
-						// Handle abort signal
-						signal.addEventListener("abort", () => {
-							pendingPlanConfirmations.delete(toolUseID);
-							reject(new Error("Plan confirmation cancelled"));
-						});
-					});
+					const response = await createPendingPromise(
+						pendingPlanConfirmations,
+						toolUseID,
+						signal,
+						"Plan confirmation cancelled",
+					);
 
 					console.log(
 						`[Claude] Plan confirmation response - toolUseId: ${toolUseID}, approved: ${response.approved}`,
