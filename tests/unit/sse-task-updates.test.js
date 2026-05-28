@@ -11,16 +11,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { publish as originalPublish } from '../../server/bus.js';
-import { broadcastToSession as originalBroadcastToSession } from '../../server/broadcast.js';
+import { readFileSync } from 'fs';
+
 
 // ---------------------------------------------------------------------------
 // Mock dependencies for isolated testing
 // ---------------------------------------------------------------------------
 
-// Track calls to publish and broadcastToSession
+// Track calls to publish and eventDelivery.recordSessionEvent
 const publishCalls = [];
-const broadcastToSessionCalls = [];
+const recordSessionEventCalls = [];
 const wsSendCalls = [];
 
 // Mock publish from bus.js
@@ -30,17 +30,27 @@ vi.mock('../../server/bus.js', () => ({
   })
 }));
 
-// Mock broadcastToSession from broadcast.js
-vi.mock('../../server/broadcast.js', () => ({
-  broadcastToSession: vi.fn((sessionId, message) => {
-    broadcastToSessionCalls.push({ sessionId, message });
-  })
+// Mock eventDelivery.recordSessionEvent from event-delivery.js
+vi.mock('../../server/event-delivery.js', () => ({
+  EventDelivery: class {},
+  eventDelivery: {
+    recordSessionEvent: vi.fn((sessionId, message) => {
+      recordSessionEventCalls.push({ sessionId, message });
+    }),
+    startSession: vi.fn(),
+    replayToSSE: vi.fn(),
+    replayToWebSocket: vi.fn(),
+    hasReplay: vi.fn(),
+    clearSession: vi.fn(),
+    deliver: vi.fn()
+  }
 }));
 
 // Import after mocking
 import { broadcastTaskUpdate, trackTaskStart, trackTaskComplete, trackTaskFailed } from '../../server/tasks.js';
 const { publish } = await import('../../server/bus.js');
-const { broadcastToSession } = await import('../../server/broadcast.js');
+const { eventDelivery } = await import('../../server/event-delivery.js');
+const recordSessionEvent = eventDelivery.recordSessionEvent;
 
 // Mock WebSocket
 const createMockWebSocket = (readyState = 1) => ({
@@ -53,7 +63,7 @@ const createMockWebSocket = (readyState = 1) => ({
 // Reset call trackers before each test
 beforeEach(() => {
   publishCalls.length = 0;
-  broadcastToSessionCalls.length = 0;
+  recordSessionEventCalls.length = 0;
   wsSendCalls.length = 0;
   vi.clearAllMocks();
 });
@@ -69,8 +79,8 @@ describe('Static Analysis - server/tasks.js structure', () => {
     expect(tasksJs).toContain("import { publish } from './bus.js'");
   });
 
-  it('imports broadcastToSession from ./broadcast.js', () => {
-    expect(tasksJs).toContain("import { broadcastToSession } from './broadcast.js'");
+  it('imports eventDelivery from ./event-delivery.js', () => {
+    expect(tasksJs).toContain("import { eventDelivery } from './event-delivery.js'");
   });
 
   it('broadcastTaskUpdate accepts username and sessionId parameters', () => {
@@ -88,8 +98,8 @@ describe('Static Analysis - server/tasks.js structure', () => {
     expect(tasksJs).toContain('publish(username, message)');
   });
 
-  it('calls broadcastToSession(sessionId, message) for buffering', () => {
-    expect(tasksJs).toContain('broadcastToSession(sessionId, message)');
+  it('calls eventDelivery.recordSessionEvent(sessionId, message) for buffering', () => {
+    expect(tasksJs).toContain('eventDelivery.recordSessionEvent(sessionId, message)');
   });
 
   it('message structure includes sessionId field', () => {
@@ -179,7 +189,7 @@ describe('broadcastTaskUpdate - SSE Publishing', () => {
     }).not.toThrow();
 
     // Should still continue to other paths (buffering, WebSocket)
-    expect(broadcastToSession).toHaveBeenCalled();
+    expect(recordSessionEvent).toHaveBeenCalled();
     expect(ws.send).toHaveBeenCalled();
   });
 
@@ -230,8 +240,8 @@ describe('broadcastTaskUpdate - Session Buffering', () => {
     const ws = createMockWebSocket();
     broadcastTaskUpdate(ws, 'task-started', mockTask, 'user', 'session-456');
 
-    expect(broadcastToSession).toHaveBeenCalledTimes(1);
-    expect(broadcastToSession).toHaveBeenCalledWith(
+    expect(recordSessionEvent).toHaveBeenCalledTimes(1);
+    expect(recordSessionEvent).toHaveBeenCalledWith(
       'session-456',
       expect.objectContaining({
         type: 'task-started',
@@ -245,21 +255,21 @@ describe('broadcastTaskUpdate - Session Buffering', () => {
     const ws = createMockWebSocket();
     broadcastTaskUpdate(ws, 'task-started', mockTask, 'user', null);
 
-    expect(broadcastToSession).not.toHaveBeenCalled();
+    expect(recordSessionEvent).not.toHaveBeenCalled();
   });
 
   it('does NOT buffer when sessionId is undefined', () => {
     const ws = createMockWebSocket();
     broadcastTaskUpdate(ws, 'task-started', mockTask, 'user', undefined);
 
-    expect(broadcastToSession).not.toHaveBeenCalled();
+    expect(recordSessionEvent).not.toHaveBeenCalled();
   });
 
   it('does NOT buffer when sessionId is empty string', () => {
     const ws = createMockWebSocket();
     broadcastTaskUpdate(ws, 'task-started', mockTask, 'user', '');
 
-    expect(broadcastToSession).not.toHaveBeenCalled();
+    expect(recordSessionEvent).not.toHaveBeenCalled();
   });
 
   it('buffers with correct message structure', () => {
@@ -267,7 +277,7 @@ describe('broadcastTaskUpdate - Session Buffering', () => {
     const sessionId = 'session-789';
     broadcastTaskUpdate(ws, 'task-started', mockTask, 'user', sessionId);
 
-    const bufferArg = broadcastToSession.mock.calls[0][1];
+    const bufferArg = recordSessionEvent.mock.calls[0][1];
     expect(bufferArg).toHaveProperty('type', 'task-started');
     expect(bufferArg).toHaveProperty('data');
     expect(bufferArg).not.toHaveProperty('task'); // Old structure should NOT exist
@@ -275,9 +285,9 @@ describe('broadcastTaskUpdate - Session Buffering', () => {
     expect(bufferArg).toHaveProperty('sessionId', sessionId);
   });
 
-  it('handles broadcastToSession errors gracefully', () => {
+  it('handles recordSessionEvent errors gracefully', () => {
     const ws = createMockWebSocket();
-    broadcastToSession.mockImplementation(() => {
+    recordSessionEvent.mockImplementation(() => {
       throw new Error('Buffer overflow');
     });
 
@@ -370,7 +380,7 @@ describe('broadcastTaskUpdate - WebSocket Fallback', () => {
 
     // SSE and buffering should still have been called
     expect(publish).toHaveBeenCalled();
-    expect(broadcastToSession).toHaveBeenCalled();
+    expect(recordSessionEvent).toHaveBeenCalled();
   });
 });
 
@@ -391,7 +401,7 @@ describe('broadcastTaskUpdate - Combined Delivery Paths', () => {
 
     // All three paths should be used
     expect(publish).toHaveBeenCalledTimes(1);
-    expect(broadcastToSession).toHaveBeenCalledTimes(1);
+    expect(recordSessionEvent).toHaveBeenCalledTimes(1);
     expect(ws.send).toHaveBeenCalledTimes(1);
   });
 
@@ -400,7 +410,7 @@ describe('broadcastTaskUpdate - Combined Delivery Paths', () => {
     broadcastTaskUpdate(ws, 'task-started', mockTask, 'user', null);
 
     expect(publish).toHaveBeenCalledTimes(1);
-    expect(broadcastToSession).not.toHaveBeenCalled();
+    expect(recordSessionEvent).not.toHaveBeenCalled();
     expect(ws.send).toHaveBeenCalledTimes(1);
   });
 
@@ -409,7 +419,7 @@ describe('broadcastTaskUpdate - Combined Delivery Paths', () => {
     broadcastTaskUpdate(ws, 'task-started', mockTask, null, 'session');
 
     expect(publish).not.toHaveBeenCalled();
-    expect(broadcastToSession).toHaveBeenCalledTimes(1);
+    expect(recordSessionEvent).toHaveBeenCalledTimes(1);
     expect(ws.send).toHaveBeenCalledTimes(1);
   });
 
@@ -418,7 +428,7 @@ describe('broadcastTaskUpdate - Combined Delivery Paths', () => {
     broadcastTaskUpdate(ws, 'task-started', mockTask, null, null);
 
     expect(publish).not.toHaveBeenCalled();
-    expect(broadcastToSession).not.toHaveBeenCalled();
+    expect(recordSessionEvent).not.toHaveBeenCalled();
     expect(ws.send).toHaveBeenCalledTimes(1);
   });
 
@@ -430,7 +440,7 @@ describe('broadcastTaskUpdate - Combined Delivery Paths', () => {
     broadcastTaskUpdate(ws, 'task-completed', mockTask, username, sessionId);
 
     const sseMessage = publish.mock.calls[0][1];
-    const bufferMessage = broadcastToSession.mock.calls[0][1];
+    const bufferMessage = recordSessionEvent.mock.calls[0][1];
     const wsMessage = JSON.parse(ws.send.mock.calls[0][0]);
 
     // All should have same structure
