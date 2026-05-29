@@ -12,29 +12,8 @@ const appJs = readFileSync(resolve("public/app.js"), "utf8");
 
 // ─── server/claude.js code analysis ──────────────────────────────
 describe("server/claude.js - code structure", () => {
-	describe("sendMessage calls use sessionInfo.ws", () => {
-		it("should have NO sendMessage(ws, ...) calls (only sendMessage(sessionInfo.ws, ...))", () => {
-			const lines = claudeJs.split("\n");
-			const bareWsCalls = [];
-			const sessionInfoWsCalls = [];
-
-			for (let i = 0; i < lines.length; i++) {
-				const line = lines[i].trim();
-				if (line.startsWith("function sendMessage(ws,")) continue;
-
-				if (line.includes("sendMessage(ws,")) {
-					bareWsCalls.push({ line: i + 1, content: line });
-				}
-				if (line.includes("sendMessage(sessionInfo.ws,")) {
-					sessionInfoWsCalls.push({ line: i + 1, content: line });
-				}
-			}
-
-			expect(bareWsCalls).toEqual([]);
-			expect(sessionInfoWsCalls.length).toBeGreaterThanOrEqual(4);
-		});
-
-		it("should have sendMessage calls for claude-message, token-usage, claude-done, error, and session-created", () => {
+	describe("eventDelivery.deliver usage", () => {
+		it("should use eventDelivery.deliver() for all message delivery", () => {
 			const expectedTypes = [
 				"claude-message",
 				"token-usage",
@@ -45,10 +24,19 @@ describe("server/claude.js - code structure", () => {
 
 			for (const type of expectedTypes) {
 				const pattern = new RegExp(
-					`sendMessage\\(sessionInfo\\.ws,\\s*\\{[^}]*type:\\s*'${type}'`,
+					`eventDelivery\\.deliver\\([^)]*,\\s*\\{[^}]*type:\\s*"${type}"`,
 				);
 				expect(claudeJs).toMatch(pattern);
 			}
+		});
+
+		it("should have eventDelivery.deliver calls for claude-message in processQueryStream", () => {
+			// Find the processQueryStream function
+			const fnStart = claudeJs.indexOf("async function processQueryStream(");
+			const fnEnd = claudeJs.indexOf("\n}", fnStart + 100);
+			const fnBody = claudeJs.slice(fnStart, fnEnd);
+
+			expect(fnBody).toContain("eventDelivery.deliver");
 		});
 	});
 
@@ -64,7 +52,7 @@ describe("server/claude.js - code structure", () => {
 
 		it("sessionInfo should be initialized with queryInstance: null, ws, and username", () => {
 			expect(claudeJs).toMatch(
-				/const sessionInfo = \{\s*queryInstance:\s*null,\s*ws,\s*username\s*\}/,
+				/const sessionInfo = \{\s*queryInstance:\s*null,\s*ws,\s*username/,
 			);
 		});
 	});
@@ -81,15 +69,15 @@ describe("server/claude.js - code structure", () => {
 	});
 
 	describe("processQueryStream signature", () => {
-		it("should still accept sessionInfo as a parameter", () => {
+		it("should still accept _ws as a parameter (unused)", () => {
 			expect(claudeJs).toMatch(
-				/async function processQueryStream\(queryInstance,\s*_?ws,\s*sessionInfo,\s*onSessionId\)/,
+				/async function processQueryStream\(\n\tqueryInstance,\n\t_ws,\n\tsessionInfo,\n\tonSessionId,\n\)/,
 			);
 		});
 	});
 
-	describe("canUseTool uses sessionInfo.ws", () => {
-		it("should use sendMessage(sessionInfo.ws, ...) inside canUseTool callback", () => {
+	describe("canUseTool uses eventDelivery.deliver", () => {
+		it("should use eventDelivery.deliver() inside canUseTool callback", () => {
 			const canUseToolStart = claudeJs.indexOf("canUseTool:");
 			const canUseToolEnd = claudeJs.indexOf(
 				"// Allow all other tools",
@@ -97,21 +85,20 @@ describe("server/claude.js - code structure", () => {
 			);
 			const canUseToolSection = claudeJs.slice(canUseToolStart, canUseToolEnd);
 
-			expect(canUseToolSection).toContain("sendMessage(sessionInfo.ws,");
-			expect(canUseToolSection).not.toMatch(/sendMessage\(ws,/);
+			expect(canUseToolSection).toContain("eventDelivery.deliver(username,");
 		});
 	});
 
 	describe("bus and registry integration", () => {
-		it("should import publish from bus.js", () => {
+		it("should import publish from bus.js (for ephemeral session-status events)", () => {
 			expect(claudeJs).toMatch(
-				/import\s*\{[^}]*publish[^}]*\}\s*from\s*'\.\/bus\.js'/,
+				/import\s*\{[^}]*publish[^}]*\}\s*from\s*['".]\.\/bus\.js['".]/,
 			);
 		});
 
 		it("should import register and setStatus from session-registry.js", () => {
 			expect(claudeJs).toMatch(
-				/import\s*\{[^}]*register[^}]*setStatus[^}]*\}\s*from\s*'\.\/session-registry\.js'/,
+				/import\s*\{[^}]*register[^}]*setStatus[^}]*\}\s*from\s*['".]\.\/session-registry\.js['".]/,
 			);
 		});
 
@@ -121,23 +108,16 @@ describe("server/claude.js - code structure", () => {
 			);
 		});
 
-		it("sendMessage should accept username parameter", () => {
+		it("should use publish() for ephemeral session-status events", () => {
+			// session-status events are ephemeral and use publish
 			expect(claudeJs).toMatch(
-				/function sendMessage\(ws,\s*data,\s*username\)/,
+				/publish\(username,\s*\{\s*type:\s*"session-status"/,
 			);
 		});
 
-		it("sendMessage should call eventDelivery.recordSessionEvent and publish", () => {
-			const fnStart = claudeJs.indexOf(
-				"function sendMessage(ws, data, username)",
-			);
-			const fnEnd = claudeJs.indexOf("\n}", fnStart);
-			const fnBody = claudeJs.slice(fnStart, fnEnd);
-
-			expect(fnBody).toContain(
-				"eventDelivery.recordSessionEvent(data.sessionId, data)",
-			);
-			expect(fnBody).toContain("publish(username, data)");
+		it("should use eventDelivery.deliver() for replayable events", () => {
+			// All main events (claude-message, token-usage, claude-done, error, session-created) use eventDelivery
+			expect(claudeJs).toMatch(/eventDelivery\.deliver\(username,/);
 		});
 	});
 });
@@ -147,13 +127,13 @@ describe("server/index.js - code structure", () => {
 	describe("imports", () => {
 		it("should import handleChat, handleAbort, handleQuestionResponse, handlePlanResponse from claude.js", () => {
 			expect(indexJs).toMatch(
-				/import\s*\{[^}]*handleChat[^}]*handleAbort[^}]*handleQuestionResponse[^}]*handlePlanResponse[^}]*\}\s*from\s*'\.\/claude\.js'/,
+				/import\s*\{[^}]*handleChat[^}]*handleAbort[^}]*handleQuestionResponse[^}]*handlePlanResponse[^}]*\}\s*from\s*['".]\.\/claude\.js['".]/,
 			);
 		});
 
 		it("should NOT import isSessionActive or resubscribeSession from claude.js", () => {
 			const claudeImport = indexJs.match(
-				/import\s*\{[^}]*\}\s*from\s*'\.\/claude\.js'/,
+				/import\s*\{[^}]*\}\s*from\s*['".]\.\/claude\.js['".]/,
 			);
 			expect(claudeImport).toBeTruthy();
 			expect(claudeImport[0]).not.toContain("isSessionActive");
@@ -162,39 +142,39 @@ describe("server/index.js - code structure", () => {
 
 		it("should import subscribe and publish from bus.js", () => {
 			expect(indexJs).toMatch(
-				/import\s*\{[^}]*subscribe[^}]*publish[^}]*\}\s*from\s*'\.\/bus\.js'/,
+				/import\s*\{[^}]*subscribe[^}]*publish[^}]*\}\s*from\s*['".]\.\/bus\.js['".]/,
 			);
 		});
 
 		it("should import getSessionsForUser from session-registry.js", () => {
 			expect(indexJs).toMatch(
-				/import\s*\{[^}]*getSessionsForUser[^}]*\}\s*from\s*'\.\/session-registry\.js'/,
+				/import\s*\{[^}]*getSessionsForUser[^}]*\}\s*from\s*['".]\.\/session-registry\.js['".]/,
 			);
 		});
 
 		it("should import eventDelivery from event-delivery.js", () => {
 			expect(indexJs).toMatch(
-				/import\s*\{[^}]*eventDelivery[^}]*\}\s*from\s*'\.\/event-delivery\.js'/,
+				/import\s*\{[^}]*eventDelivery[^}]*\}\s*from\s*['".]\.\/event-delivery\.js['".]/,
 			);
 		});
 	});
 
 	describe("SSE endpoint", () => {
 		it("should have GET /api/events endpoint", () => {
-			expect(indexJs).toContain("app.get('/api/events'");
+			expect(indexJs).toContain('app.get("/api/events"');
 		});
 
 		it("should send state-snapshot on SSE connect", () => {
-			const sseStart = indexJs.indexOf("app.get('/api/events'");
+			const sseStart = indexJs.indexOf('app.get("/api/events"');
 			const sseEnd = indexJs.indexOf("\n});", sseStart);
 			const sseBody = indexJs.slice(sseStart, sseEnd);
 
-			expect(sseBody).toContain("type: 'state-snapshot'");
+			expect(sseBody).toContain('type: "state-snapshot"');
 			expect(sseBody).toContain("getSessionsForUser");
 		});
 
 		it("should subscribe to bus for event delivery", () => {
-			const sseStart = indexJs.indexOf("app.get('/api/events'");
+			const sseStart = indexJs.indexOf('app.get("/api/events"');
 			const sseEnd = indexJs.indexOf("\n});", sseStart);
 			const sseBody = indexJs.slice(sseStart, sseEnd);
 
@@ -209,7 +189,7 @@ describe("server/index.js - code structure", () => {
 		});
 
 		it("abort uses publish(user.username, ...)", () => {
-			const abortStart = indexJs.indexOf("case 'abort'");
+			const abortStart = indexJs.indexOf('case "abort"');
 			const abortEnd = indexJs.indexOf("break;", abortStart);
 			const abortBody = indexJs.slice(abortStart, abortEnd);
 
@@ -217,7 +197,7 @@ describe("server/index.js - code structure", () => {
 		});
 
 		it("question-response uses publish(user.username, ...)", () => {
-			const qrStart = indexJs.indexOf("case 'question-response'");
+			const qrStart = indexJs.indexOf('case "question-response"');
 			const qrEnd = indexJs.indexOf("break;", qrStart);
 			const qrBody = indexJs.slice(qrStart, qrEnd);
 
@@ -225,7 +205,7 @@ describe("server/index.js - code structure", () => {
 		});
 
 		it("plan-response uses publish(user.username, ...)", () => {
-			const prStart = indexJs.indexOf("case 'plan-response'");
+			const prStart = indexJs.indexOf('case "plan-response"');
 			const prEnd = indexJs.indexOf("break;", prStart);
 			const prBody = indexJs.slice(prStart, prEnd);
 

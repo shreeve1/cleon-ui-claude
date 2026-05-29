@@ -3,7 +3,6 @@
  * Manages in-memory task state per session with event delivery
  */
 
-import { publish } from "./bus.js";
 import { eventDelivery } from "./event-delivery.js";
 
 // Track tasks per session: sessionId -> Map(taskId -> task)
@@ -103,15 +102,13 @@ export function clearSession(sessionId) {
 }
 
 /**
- * Broadcast task update to WebSocket client and SSE subscribers
- * @param {WebSocket} ws - WebSocket connection (can be null)
+ * Broadcast task update via unified event delivery (live SSE + replay buffer)
  * @param {string} type - Update type ('task-started', 'task-completed', 'task-failed')
  * @param {object} task - Task data
  * @param {string} [username] - Username for SSE publishing
- * @param {string} [sessionId] - Session ID for message buffering
+ * @param {string} [sessionId] - Session ID for replay buffering
  */
 export function broadcastTaskUpdate(
-	ws,
 	type,
 	task,
 	username = null,
@@ -123,39 +120,7 @@ export function broadcastTaskUpdate(
 		sessionId,
 	};
 
-	// Send via SSE event bus (primary path)
-	if (username) {
-		try {
-			publish(username, message);
-		} catch (err) {
-			console.error(
-				`[Tasks] Error publishing task update to SSE:`,
-				err.message,
-			);
-		}
-	}
-
-	// Buffer for session replay (late-joining clients)
-	if (sessionId) {
-		try {
-			eventDelivery.recordSessionEvent(sessionId, message);
-		} catch (err) {
-			console.error(`[Tasks] Error buffering task update:`, err.message);
-		}
-	}
-
-	// Fallback: WebSocket (for legacy clients)
-	if (ws && ws.readyState === 1) {
-		// WebSocket.OPEN
-		try {
-			ws.send(JSON.stringify(message));
-		} catch (err) {
-			console.error(
-				`[Tasks] Error sending task update via WebSocket:`,
-				err.message,
-			);
-		}
-	}
+	eventDelivery.deliver(username, message);
 }
 
 /**

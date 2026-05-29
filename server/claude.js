@@ -254,19 +254,15 @@ async function processQueryStream(
 				);
 			}
 			if (usage) {
-				sendMessage(
-					sessionInfo.ws,
-					{
-						type: "token-usage",
-						sessionId: message.session_id,
-						...usage,
-					},
-					sessionInfo.username,
-				);
+				eventDelivery.deliver(sessionInfo.username, {
+					type: "token-usage",
+					sessionId: message.session_id,
+					...usage,
+				});
 			}
 		}
 
-		// Transform and forward message (pass current model, sessionId, ws, and username for task tracking)
+		// Transform and forward message (pass current model, sessionId, and username for task tracking)
 		const currentModel = message.session_id
 			? sessionModels.get(message.session_id)
 			: null;
@@ -274,19 +270,14 @@ async function processQueryStream(
 			message,
 			currentModel,
 			message.session_id,
-			sessionInfo.ws,
 			sessionInfo.username,
 		);
 		if (transformed) {
-			sendMessage(
-				sessionInfo.ws,
-				{
-					type: "claude-message",
-					sessionId: message.session_id,
-					data: transformed,
-				},
-				sessionInfo.username,
-			);
+			eventDelivery.deliver(sessionInfo.username, {
+				type: "claude-message",
+				sessionId: message.session_id,
+				data: transformed,
+			});
 		}
 
 		// Track activity based on message type
@@ -405,19 +396,15 @@ export async function handleChat(msg, ws, username) {
 					`[Claude] AskUserQuestion intercepted - toolUseId: ${toolUseID}`,
 				);
 
-				sendMessage(
-					sessionInfo.ws,
-					{
-						type: "claude-message",
-						sessionId: currentSessionId,
-						data: {
-							type: "question",
-							id: toolUseID,
-							questions: input.questions || [],
-						},
+				eventDelivery.deliver(username, {
+					type: "claude-message",
+					sessionId: currentSessionId,
+					data: {
+						type: "question",
+						id: toolUseID,
+						questions: input.questions || [],
 					},
-					username,
-				);
+				});
 
 				// Wait for user response (with timeout)
 				try {
@@ -453,18 +440,14 @@ export async function handleChat(msg, ws, username) {
 					`[Claude] ExitPlanMode intercepted - toolUseId: ${toolUseID}`,
 				);
 
-				sendMessage(
-					sessionInfo.ws,
-					{
-						type: "claude-message",
-						sessionId: currentSessionId,
-						data: {
-							type: "plan-confirmation",
-							id: toolUseID,
-						},
+				eventDelivery.deliver(username, {
+					type: "claude-message",
+					sessionId: currentSessionId,
+					data: {
+						type: "plan-confirmation",
+						id: toolUseID,
 					},
-					username,
-				);
+				});
 
 				// Wait for user approval/rejection (with timeout)
 				try {
@@ -585,14 +568,10 @@ export async function handleChat(msg, ws, username) {
 					displayName: projectDisplayName,
 					status: "streaming",
 				});
-				sendMessage(
-					sessionInfo.ws,
-					{
-						type: "session-created",
-						sessionId: currentSessionId,
-					},
-					username,
-				);
+				eventDelivery.deliver(username, {
+					type: "session-created",
+					sessionId: currentSessionId,
+				});
 				publish(username, {
 					type: "session-status",
 					sessionId: currentSessionId,
@@ -607,14 +586,10 @@ export async function handleChat(msg, ws, username) {
 
 		// Stream complete
 		console.log(`[Claude] Query complete - session: ${currentSessionId}`);
-		sendMessage(
-			sessionInfo.ws,
-			{
-				type: "claude-done",
-				sessionId: currentSessionId,
-			},
-			username,
-		);
+		eventDelivery.deliver(username, {
+			type: "claude-done",
+			sessionId: currentSessionId,
+		});
 	} catch (err) {
 		console.error("[Claude] Query error:", err);
 
@@ -630,15 +605,11 @@ export async function handleChat(msg, ws, username) {
 			? "Rate limit reached. The API is temporarily throttled — please wait a moment and try again."
 			: errMsg || "Query failed";
 
-		sendMessage(
-			sessionInfo.ws,
-			{
-				type: "error",
-				sessionId: currentSessionId || msg.sessionId || null,
-				message: userMessage,
-			},
-			username,
-		);
+		eventDelivery.deliver(username, {
+			type: "error",
+			sessionId: currentSessionId || msg.sessionId || null,
+			message: userMessage,
+		});
 	} finally {
 		if (sessionInfo.activityTracker) {
 			sessionInfo.activityTracker.finish();
@@ -791,27 +762,6 @@ export async function handlePlanResponse(
 	return true;
 }
 
-/**
- * Send message to WebSocket (handles stringify + error checking)
- * Broadcasts to all session subscribers if sessionId is present
- */
-function sendMessage(ws, data, username) {
-	if (data.sessionId) {
-		// Buffer for SSE replay
-		eventDelivery.recordSessionEvent(data.sessionId, data);
-		// Publish to event bus for SSE delivery
-		if (username) {
-			publish(username, data);
-		}
-	} else {
-		// No sessionId - fall back to direct WS send
-		if (ws && ws.readyState === 1) {
-			// WebSocket.OPEN
-			ws.send(JSON.stringify(data));
-		}
-	}
-}
-
 // Generate timestamp in ISO 8601 format
 function generateTimestamp() {
 	return new Date().toISOString();
@@ -829,7 +779,6 @@ function transformMessage(
 	msg,
 	model = null,
 	sessionId = null,
-	ws = null,
 	username = null,
 ) {
 	if (!msg || !msg.type) return null;
@@ -887,7 +836,7 @@ function transformMessage(
 				}
 
 				// Create a task for this tool execution
-				if (sessionId && ws) {
+				if (sessionId) {
 					const summary = getToolSummary(toolUse.name, toolUse.input);
 					const taskTitle =
 						typeof summary === "object" ? summary.summary : summary;
@@ -905,7 +854,7 @@ function transformMessage(
 					toolUseToTaskMap.set(toolUse.id, task.taskId);
 
 					// Broadcast task started
-					broadcastTaskUpdate(ws, "task-started", task, username, sessionId);
+					broadcastTaskUpdate("task-started", task, username, sessionId);
 
 					// Clean up old mappings (keep last 100)
 					if (toolUseToTaskMap.size > 100) {
@@ -976,7 +925,7 @@ function transformMessage(
 				}
 
 				// Complete or fail the task
-				if (sessionId && ws) {
+				if (sessionId) {
 					const taskId = toolUseToTaskMap.get(toolUseId);
 					if (taskId) {
 						let task;
@@ -987,13 +936,7 @@ function transformMessage(
 								toolResult.content,
 							);
 							if (task) {
-								broadcastTaskUpdate(
-									ws,
-									"task-failed",
-									task,
-									username,
-									sessionId,
-								);
+								broadcastTaskUpdate("task-failed", task, username, sessionId);
 							}
 						} else {
 							task = taskManager.trackTaskComplete(sessionId, taskId, {
@@ -1004,7 +947,6 @@ function transformMessage(
 							});
 							if (task) {
 								broadcastTaskUpdate(
-									ws,
 									"task-completed",
 									task,
 									username,

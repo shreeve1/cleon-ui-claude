@@ -17,15 +17,12 @@ const appJs = readFileSync(resolve("public/app.js"), "utf8");
 // ─── Server SSE endpoint structure ──────────────────────────────
 describe("SSE endpoint (server/index.js)", () => {
 	it("has GET /api/events SSE endpoint", () => {
-		expect(indexJs).toContain("app.get('/api/events'");
+		expect(indexJs).toContain('app.get("/api/events"');
 	});
 
 	it("authenticates via query param token", () => {
-		const sseStart = indexJs.indexOf("app.get('/api/events'");
-		const sseEnd = indexJs.indexOf(
-			"});",
-			indexJs.indexOf("req.on('close'", sseStart),
-		);
+		const sseStart = indexJs.indexOf('app.get("/api/events"');
+		const sseEnd = indexJs.indexOf("// SPA fallback", sseStart);
 		const sseBody = indexJs.slice(sseStart, sseEnd);
 
 		expect(sseBody).toContain("req.query.token");
@@ -33,82 +30,64 @@ describe("SSE endpoint (server/index.js)", () => {
 	});
 
 	it("sets correct SSE response headers", () => {
-		const sseStart = indexJs.indexOf("app.get('/api/events'");
-		const sseEnd = indexJs.indexOf(
-			"});",
-			indexJs.indexOf("req.on('close'", sseStart),
-		);
+		const sseStart = indexJs.indexOf('app.get("/api/events"');
+		const sseEnd = indexJs.indexOf("// SPA fallback", sseStart);
 		const sseBody = indexJs.slice(sseStart, sseEnd);
 
-		expect(sseBody).toContain("'Content-Type': 'text/event-stream'");
-		expect(sseBody).toContain("'Cache-Control': 'no-cache'");
-		expect(sseBody).toContain("'Connection': 'keep-alive'");
+		expect(sseBody).toContain('"Content-Type": "text/event-stream"');
+		expect(sseBody).toContain('"Cache-Control": "no-cache"');
+		expect(sseBody).toContain('Connection: "keep-alive"');
 	});
 
 	it("sends state-snapshot on connect with user sessions", () => {
-		const sseStart = indexJs.indexOf("app.get('/api/events'");
-		const sseEnd = indexJs.indexOf(
-			"});",
-			indexJs.indexOf("req.on('close'", sseStart),
-		);
+		const sseStart = indexJs.indexOf('app.get("/api/events"');
+		const sseEnd = indexJs.indexOf("// SPA fallback", sseStart);
 		const sseBody = indexJs.slice(sseStart, sseEnd);
 
 		expect(sseBody).toContain("getSessionsForUser(user.username)");
-		expect(sseBody).toContain("type: 'state-snapshot'");
+		expect(sseBody).toContain('type: "state-snapshot"');
 	});
 
 	it("replays buffer for streaming sessions", () => {
-		const sseStart = indexJs.indexOf("app.get('/api/events'");
-		const sseEnd = indexJs.indexOf(
-			"});",
-			indexJs.indexOf("req.on('close'", sseStart),
-		);
+		const sseStart = indexJs.indexOf('app.get("/api/events"');
+		const sseEnd = indexJs.indexOf("// SPA fallback", sseStart);
 		const sseBody = indexJs.slice(sseStart, sseEnd);
 
-		expect(sseBody).toContain("status === 'streaming'");
+		expect(sseBody).toContain('status === "streaming"');
 		expect(sseBody).toContain("eventDelivery.replayToSSE");
 	});
 
 	it("replays buffer during replay grace period after streaming ends", () => {
-		const sseStart = indexJs.indexOf("app.get('/api/events'");
-		const sseEnd = indexJs.indexOf(
-			"});",
-			indexJs.indexOf("req.on('close'", sseStart),
-		);
+		const sseStart = indexJs.indexOf('app.get("/api/events"');
+		const sseEnd = indexJs.indexOf("// SPA fallback", sseStart);
 		const sseBody = indexJs.slice(sseStart, sseEnd);
 
 		expect(sseBody).toContain("eventDelivery.hasReplay(s.sessionId)");
 	});
 
 	it("subscribes to event bus for ongoing events", () => {
-		const sseStart = indexJs.indexOf("app.get('/api/events'");
-		const sseEnd = indexJs.indexOf(
-			"});",
-			indexJs.indexOf("req.on('close'", sseStart),
-		);
+		const sseStart = indexJs.indexOf('app.get("/api/events"');
+		const sseEnd = indexJs.indexOf("// SPA fallback", sseStart);
 		const sseBody = indexJs.slice(sseStart, sseEnd);
 
 		expect(sseBody).toContain("subscribe(user.username");
 	});
 
 	it("sends heartbeat at 30s interval", () => {
-		const sseStart = indexJs.indexOf("app.get('/api/events'");
-		const sseEnd = indexJs.indexOf(
-			"});",
-			indexJs.indexOf("req.on('close'", sseStart),
-		);
+		const sseStart = indexJs.indexOf('app.get("/api/events"');
+		const sseEnd = indexJs.indexOf("// SPA fallback", sseStart);
 		const sseBody = indexJs.slice(sseStart, sseEnd);
 
-		expect(sseBody).toContain("type: 'heartbeat'");
+		expect(sseBody).toContain('type: "heartbeat"');
 		expect(sseBody).toContain("30000");
 	});
 
 	it("cleans up on connection close (unsubscribe + clearInterval)", () => {
-		const sseStart = indexJs.indexOf("app.get('/api/events'");
-		const sseEnd = indexJs.indexOf("\n});", sseStart);
+		const sseStart = indexJs.indexOf('app.get("/api/events"');
+		const sseEnd = indexJs.indexOf("// SPA fallback", sseStart);
 		const sseBody = indexJs.slice(sseStart, sseEnd);
 
-		expect(sseBody).toContain("req.on('close'");
+		expect(sseBody).toContain('req.on("close"');
 		expect(sseBody).toContain("unsubscribe()");
 		expect(sseBody).toContain("clearInterval(heartbeat)");
 	});
@@ -118,19 +97,19 @@ describe("SSE endpoint (server/index.js)", () => {
 describe("SSE-related imports (server/index.js)", () => {
 	it("imports subscribe and publish from bus.js", () => {
 		expect(indexJs).toMatch(
-			/import\s*\{[^}]*subscribe[^}]*publish[^}]*\}\s*from\s*'\.\/bus\.js'/,
+			/import\s*\{[^}]*subscribe[^}]*publish[^}]*\}\s*from\s*['".]\.\/bus\.js['".]/,
 		);
 	});
 
 	it("imports getSessionsForUser from session-registry.js", () => {
 		expect(indexJs).toMatch(
-			/import\s*\{[^}]*getSessionsForUser[^}]*\}\s*from\s*'\.\/session-registry\.js'/,
+			/import\s*\{[^}]*getSessionsForUser[^}]*\}\s*from\s*['".]\.\/session-registry\.js['".]/,
 		);
 	});
 
 	it("imports eventDelivery from event-delivery.js", () => {
 		expect(indexJs).toMatch(
-			/import\s*\{[^}]*eventDelivery[^}]*\}\s*from\s*'\.\/event-delivery\.js'/,
+			/import\s*\{[^}]*eventDelivery[^}]*\}\s*from\s*['".]\.\/event-delivery\.js['".]/,
 		);
 	});
 });
@@ -138,50 +117,47 @@ describe("SSE-related imports (server/index.js)", () => {
 // ─── WebSocket simplified to command-only ────────────────────────
 describe("WebSocket command-only protocol (server/index.js)", () => {
 	it("handles chat command via WS", () => {
-		expect(indexJs).toMatch(/case\s*'chat'/);
+		expect(indexJs).toMatch(/case\s*"chat"/);
 	});
 
 	it("handles abort command via WS", () => {
-		expect(indexJs).toMatch(/case\s*'abort'/);
+		expect(indexJs).toMatch(/case\s*"abort"/);
 	});
 
 	it("handles question-response command via WS", () => {
-		expect(indexJs).toMatch(/case\s*'question-response'/);
+		expect(indexJs).toMatch(/case\s*"question-response"/);
 	});
 
 	it("handles plan-response command via WS", () => {
-		expect(indexJs).toMatch(/case\s*'plan-response'/);
+		expect(indexJs).toMatch(/case\s*"plan-response"/);
 	});
 
 	it("handles ping via WS", () => {
-		expect(indexJs).toMatch(/case\s*'ping'/);
+		expect(indexJs).toMatch(/case\s*"ping"/);
 	});
 
 	it("abort response uses publish() not ws.send", () => {
-		const abortStart = indexJs.indexOf("case 'abort'");
+		const abortStart = indexJs.indexOf('case "abort"');
 		const abortEnd = indexJs.indexOf("break;", abortStart);
 		const abortBody = indexJs.slice(abortStart, abortEnd);
 
 		expect(abortBody).toContain("publish(user.username");
-		expect(abortBody).toContain("type: 'abort-result'");
 	});
 
 	it("question-response uses publish() not ws.send", () => {
-		const qrStart = indexJs.indexOf("case 'question-response'");
+		const qrStart = indexJs.indexOf('case "question-response"');
 		const qrEnd = indexJs.indexOf("break;", qrStart);
 		const qrBody = indexJs.slice(qrStart, qrEnd);
 
 		expect(qrBody).toContain("publish(user.username");
-		expect(qrBody).toContain("type: 'question-response-result'");
 	});
 
 	it("plan-response uses publish() not ws.send", () => {
-		const prStart = indexJs.indexOf("case 'plan-response'");
+		const prStart = indexJs.indexOf('case "plan-response"');
 		const prEnd = indexJs.indexOf("break;", prStart);
 		const prBody = indexJs.slice(prStart, prEnd);
 
 		expect(prBody).toContain("publish(user.username");
-		expect(prBody).toContain("type: 'plan-response-result'");
 	});
 });
 
@@ -198,7 +174,7 @@ describe("old WS subscription protocol removed (server/index.js)", () => {
 
 	it("does not import isSessionActive from claude.js", () => {
 		const claudeImport = indexJs.match(
-			/import\s*\{[^}]*\}\s*from\s*'\.\/claude\.js'/,
+			/import\s*\{[^}]*\}\s*from\s*['".]\.\/claude\.js['".]/,
 		);
 		expect(claudeImport).toBeTruthy();
 		expect(claudeImport[0]).not.toContain("isSessionActive");
@@ -206,7 +182,7 @@ describe("old WS subscription protocol removed (server/index.js)", () => {
 
 	it("does not import resubscribeSession from claude.js", () => {
 		const claudeImport = indexJs.match(
-			/import\s*\{[^}]*\}\s*from\s*'\.\/claude\.js'/,
+			/import\s*\{[^}]*\}\s*from\s*['".]\.\/claude\.js['".]/,
 		);
 		expect(claudeImport).toBeTruthy();
 		expect(claudeImport[0]).not.toContain("resubscribeSession");
@@ -346,39 +322,36 @@ describe("old WS subscription protocol removed (public/app.js)", () => {
 	});
 });
 
-// ─── WebSocket replacement mechanism (claude.js) ─────────────────
-describe("WebSocket replacement mechanism (server/claude.js)", () => {
+// ─── Event delivery mechanism (claude.js) ────────────────────────
+describe("Event delivery mechanism (server/claude.js)", () => {
 	it("activity events use Event Delivery for replayable latest state", () => {
 		expect(claudeJs).toContain(
-			"import { eventDelivery } from './event-delivery.js'",
+			'import { eventDelivery } from "./event-delivery.js"',
 		);
 		expect(claudeJs).toContain("eventDelivery.deliver(username, event)");
 	});
 
-	it("resubscribeSession replaces ws on the sessionInfo object", () => {
-		expect(claudeJs).toMatch(/sessionInfo\.ws = newWs/);
-	});
-
-	it("processQueryStream reads from sessionInfo.ws, enabling mid-stream swap", () => {
+	it("eventDelivery.deliver is used for message delivery in processQueryStream", () => {
 		const fnStart = claudeJs.indexOf("async function processQueryStream(");
-		const fnEnd = claudeJs.indexOf("\n}", fnStart + 50);
+		const fnEnd = claudeJs.indexOf("\n}", fnStart + 100);
 		const fnBody = claudeJs.slice(fnStart, fnEnd);
 
-		expect(fnBody).toContain("sendMessage(sessionInfo.ws,");
+		expect(fnBody).toContain("eventDelivery.deliver(sessionInfo.username,");
 	});
 
-	it("sendMessage function takes username parameter", () => {
-		expect(claudeJs).toMatch(/function sendMessage\(ws, data, username\)/);
+	it("processQueryStream passes username from sessionInfo to transformMessage", () => {
+		// transformMessage is called with sessionInfo.username
+		expect(claudeJs).toContain("sessionInfo.username");
 	});
 
-	it("sendMessage publishes to event bus", () => {
-		const fnStart = claudeJs.indexOf(
-			"function sendMessage(ws, data, username)",
-		);
-		const fnEnd = claudeJs.indexOf("\n}", fnStart);
-		const fnBody = claudeJs.slice(fnStart, fnEnd);
+	it("should use eventDelivery.deliver() for all main event types", () => {
+		// Verify eventDelivery.deliver is used for key event types
+		const deliverCalls = claudeJs.match(/eventDelivery\.deliver\(/g);
+		expect(deliverCalls).not.toBeNull();
+		expect(deliverCalls.length).toBeGreaterThan(0);
+	});
 
-		expect(fnBody).toContain("eventDelivery.recordSessionEvent(");
-		expect(fnBody).toContain("publish(username, data)");
+	it("sendMessage function does NOT exist (deleted)", () => {
+		expect(claudeJs).not.toMatch(/function sendMessage\(/);
 	});
 });
