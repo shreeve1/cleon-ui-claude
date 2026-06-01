@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createPendingPromise } from "../../server/claude.js";
+import {
+	createPendingPromise,
+	TOOL_RESPONSE_TIMEOUT_MS,
+} from "../../server/claude.js";
+
+// Explicit timeout for tests that exercise the timer-firing path. The module
+// default (TOOL_RESPONSE_TIMEOUT_MS) is 0 / disabled unless the env var is set.
+const TEST_TIMEOUT = 5 * 60 * 1000;
 
 describe("createPendingPromise", () => {
 	let callbacksMap;
@@ -22,6 +29,7 @@ describe("createPendingPromise", () => {
 			"tool-1",
 			controller.signal,
 			"Cancelled",
+			TEST_TIMEOUT,
 		);
 
 		// Simulate user responding
@@ -43,18 +51,19 @@ describe("createPendingPromise", () => {
 			"tool-1",
 			controller.signal,
 			"Cancelled",
+			TEST_TIMEOUT,
 		);
 
 		// Resolve before timeout
 		callbacksMap.get("tool-1").resolve("done");
 
-		// Advance past the 5-minute timeout — should NOT reject
-		vi.advanceTimersByTime(5 * 60 * 1000 + 1);
+		// Advance past the timeout — should NOT reject
+		vi.advanceTimersByTime(TEST_TIMEOUT + 1);
 
 		await expect(promise).resolves.toBe("done");
 	});
 
-	it("rejects with timeout message after 5 minutes", async () => {
+	it("rejects with timeout message after the timeout", async () => {
 		vi.useFakeTimers();
 
 		const promise = createPendingPromise(
@@ -62,14 +71,38 @@ describe("createPendingPromise", () => {
 			"tool-1",
 			controller.signal,
 			"Cancelled",
+			TEST_TIMEOUT,
 		);
 
-		vi.advanceTimersByTime(5 * 60 * 1000);
+		vi.advanceTimersByTime(TEST_TIMEOUT);
 
 		await expect(promise).rejects.toThrow("User did not respond in time");
 
 		// Map entry cleaned up on timeout
 		expect(callbacksMap.has("tool-1")).toBe(false);
+	});
+
+	it("never times out when timeout is disabled (0)", async () => {
+		vi.useFakeTimers();
+
+		const promise = createPendingPromise(
+			callbacksMap,
+			"tool-1",
+			controller.signal,
+			"Cancelled",
+			0,
+		);
+
+		// Advance way past any plausible timeout — must stay pending
+		vi.advanceTimersByTime(24 * 60 * 60 * 1000);
+
+		// Still answerable: resolving works after a long wait
+		callbacksMap.get("tool-1").resolve("late answer");
+		await expect(promise).resolves.toBe("late answer");
+	});
+
+	it("defaults to the module timeout setting (disabled)", () => {
+		expect(TOOL_RESPONSE_TIMEOUT_MS).toBe(0);
 	});
 
 	it("rejects with cancel message on abort signal", async () => {
@@ -78,6 +111,7 @@ describe("createPendingPromise", () => {
 			"tool-1",
 			controller.signal,
 			"Question cancelled",
+			TEST_TIMEOUT,
 		);
 
 		controller.abort();
@@ -96,12 +130,13 @@ describe("createPendingPromise", () => {
 			"tool-1",
 			controller.signal,
 			"Cancelled",
+			TEST_TIMEOUT,
 		);
 
 		controller.abort();
 
 		// Advance past the timeout — the timer should already be cleared
-		vi.advanceTimersByTime(5 * 60 * 1000 + 1);
+		vi.advanceTimersByTime(TEST_TIMEOUT + 1);
 
 		await expect(promise).rejects.toThrow("Cancelled");
 	});
@@ -114,13 +149,14 @@ describe("createPendingPromise", () => {
 			"tool-1",
 			controller.signal,
 			"Cancelled",
+			TEST_TIMEOUT,
 		);
 
 		// Reject via callback (e.g. session ended)
 		callbacksMap.get("tool-1").reject(new Error("Session ended"));
 
 		// Advance past timeout — timer should be cleared
-		vi.advanceTimersByTime(5 * 60 * 1000 + 1);
+		vi.advanceTimersByTime(TEST_TIMEOUT + 1);
 
 		await expect(promise).rejects.toThrow("Session ended");
 	});
@@ -133,19 +169,21 @@ describe("createPendingPromise", () => {
 			"tool-1",
 			controller.signal,
 			"Cancelled",
+			TEST_TIMEOUT,
 		);
 		const promise2 = createPendingPromise(
 			callbacksMap,
 			"tool-2",
 			controller.signal,
 			"Cancelled",
+			TEST_TIMEOUT,
 		);
 
 		// Resolve only tool-1
 		callbacksMap.get("tool-1").resolve("first");
 
 		// tool-2 still pending, then times out
-		vi.advanceTimersByTime(5 * 60 * 1000);
+		vi.advanceTimersByTime(TEST_TIMEOUT);
 
 		await expect(promise1).resolves.toBe("first");
 		await expect(promise2).rejects.toThrow("User did not respond in time");

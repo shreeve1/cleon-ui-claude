@@ -161,8 +161,13 @@ function parseHistoryEntry(entry) {
 	return null;
 }
 
-// Timeout for waiting on user responses to AskUserQuestion / ExitPlanMode
-const TOOL_RESPONSE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+// Timeout for waiting on user responses to AskUserQuestion / ExitPlanMode.
+// Disabled by default: a pending question is buffered and replayed on
+// reconnect, so the user can step away and answer whenever they return. The
+// abort signal still handles explicit cancellation. Set TOOL_RESPONSE_TIMEOUT_MS
+// env (milliseconds) to enable a janitor that reaps sessions abandoned forever.
+export const TOOL_RESPONSE_TIMEOUT_MS =
+	Number(process.env.TOOL_RESPONSE_TIMEOUT_MS) || 0; // 0 = no timeout
 
 /**
  * Creates a promise that races between a callback from the Map and a timeout.
@@ -172,14 +177,24 @@ const TOOL_RESPONSE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
  * @param {string} key - toolUseID
  * @param {AbortSignal} signal - SDK abort signal
  * @param {string} cancelMessage - rejection message on abort
+ * @param {number} timeoutMs - 0 disables the timeout (wait indefinitely)
  * @returns {Promise}
  */
-export function createPendingPromise(callbacksMap, key, signal, cancelMessage) {
+export function createPendingPromise(
+	callbacksMap,
+	key,
+	signal,
+	cancelMessage,
+	timeoutMs = TOOL_RESPONSE_TIMEOUT_MS,
+) {
 	return new Promise((resolve, reject) => {
-		const timer = setTimeout(() => {
-			callbacksMap.delete(key);
-			reject(new Error("User did not respond in time"));
-		}, TOOL_RESPONSE_TIMEOUT_MS);
+		const timer =
+			timeoutMs > 0
+				? setTimeout(() => {
+						callbacksMap.delete(key);
+						reject(new Error("User did not respond in time"));
+					}, timeoutMs)
+				: null;
 
 		callbacksMap.set(key, {
 			resolve: (val) => {
