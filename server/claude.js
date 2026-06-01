@@ -417,12 +417,24 @@ export async function handleChat(msg, ws, username) {
 
 					console.log(`[Claude] Question answered - toolUseId: ${toolUseID}`);
 
+					// The UI sends selections keyed by question index with array values
+					// ({0:["Label"]}). The SDK expects answers keyed by question text,
+					// single-select as a string label and multi-select as an array.
+					const questions = input.questions || [];
+					const answersByQuestion = {};
+					for (const [qIndex, labels] of Object.entries(answers || {})) {
+						const q = questions[Number(qIndex)];
+						if (!q || !Array.isArray(labels) || labels.length === 0) continue;
+						const isMultiple = q.multiSelect || q.multiple || false;
+						answersByQuestion[q.question] = isMultiple ? labels : labels[0];
+					}
+
 					// Return allow with the answers included in updatedInput
 					return {
 						behavior: "allow",
 						updatedInput: {
-							...input,
-							answers: answers,
+							questions,
+							answers: answersByQuestion,
 						},
 					};
 				} catch (err) {
