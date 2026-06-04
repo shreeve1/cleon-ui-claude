@@ -94,6 +94,7 @@ const limiter = rateLimit({
 	message: { error: "Too many requests, please try again later" },
 	standardHeaders: true,
 	legacyHeaders: false,
+	skip: (req) => req.originalUrl.startsWith("/api/auth/"),
 	validate: { xForwardedForHeader: false },
 });
 app.use("/api/", limiter);

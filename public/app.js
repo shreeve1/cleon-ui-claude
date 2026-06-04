@@ -89,6 +89,13 @@ function getSessionBySessionId(sessionId) {
   return state.sessions.find(s => s.sessionId === sessionId) || null;
 }
 
+function setElementHtml(element, html) {
+  const rawHtml = String(html);
+  const safeHtml = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(rawHtml) : rawHtml;
+  const doc = new DOMParser().parseFromString(safeHtml, 'text/html');
+  element.replaceChildren(...Array.from(doc.body.childNodes));
+}
+
 // Markdown renderer initialization
 let markdownInitialized = false;
 
@@ -165,7 +172,7 @@ class StreamingRenderer {
   finalizeMarkdown() {
     // Skip to end and apply markdown
     this.element.textContent = this.networkBuffer;
-    this.element.innerHTML = formatMarkdown(this.networkBuffer);
+    setElementHtml(this.element, formatMarkdown(this.networkBuffer));
 
     // Apply Prism highlighting to code blocks
     if (typeof Prism !== 'undefined') {
@@ -218,13 +225,13 @@ function renderSessionBar() {
     return;
   }
   sessionBarEl.classList.add('visible');
-  sessionTabsEl.innerHTML = state.sessions.map((s, i) => `
+  setElementHtml(sessionTabsEl, state.sessions.map((s, i) => `
     <button class="session-tab${i === state.activeSessionIndex ? ' active' : ''}${s.hasUnread ? ' unread' : ''}" data-index="${i}">
       <span class="session-tab-number">[${i + 1}]</span>
       <span class="session-tab-name">${escapeHtml(s.project.displayName || s.project.name)}</span>
       <span class="close-tab" title="Close session">&times;</span>
     </button>
-  `).join('');
+  `).join(''));
 }
 
 function switchToSession(index) {
@@ -340,7 +347,6 @@ function renderTaskPanel() {
   // Handle case where session doesn't exist or has no tasks
   const tasks = session?.tasks || [];
   const activeTasks = tasks.filter(t => t.status === 'running' || t.status === 'pending');
-  const completedTasks = tasks.filter(t => t.status === 'completed' || t.status === 'failed');
 
   // Show/hide panel based on whether there are any tasks
   if (tasks.length === 0) {
@@ -369,7 +375,7 @@ function renderTaskPanel() {
 
   // Render task list
   if (tasks.length === 0) {
-    taskList.innerHTML = '<li class="task-empty">No active tasks</li>';
+    setElementHtml(taskList, '<li class="task-empty">No active tasks</li>');
     return;
   }
 
@@ -382,7 +388,7 @@ function renderTaskPanel() {
     return (b.startTime || 0) - (a.startTime || 0);
   });
 
-  taskList.innerHTML = sortedTasks.map(task => {
+  setElementHtml(taskList, sortedTasks.map(task => {
     const progressHtml = task.progress !== undefined && task.progress !== null
       ? `<span class="task-progress">${Math.round(task.progress)}%</span>`
       : '<span class="task-progress hidden"></span>';
@@ -394,7 +400,7 @@ function renderTaskPanel() {
         ${progressHtml}
       </li>
     `;
-  }).join('');
+  }).join(''));
 }
 
 function toggleTaskPanel() {
@@ -545,7 +551,7 @@ async function restoreSessionState() {
       // Mark sessions with history for lazy loading
       if (session.sessionId) {
         session.needsHistoryLoad = true;
-        session.containerEl.innerHTML = '<div class="loading">Loading history</div>';
+        setElementHtml(session.containerEl, '<div class="loading">Loading history</div>');
       } else {
         clearMessages(session);
       }
@@ -1430,7 +1436,7 @@ function flushPendingText(session) {
     // Fallback for non-streaming
     const streamingEl = session.containerEl?.querySelector('.message.streaming');
     if (streamingEl) {
-      streamingEl.innerHTML = formatMarkdown(session.pendingText);
+      setElementHtml(streamingEl, formatMarkdown(session.pendingText));
       streamingEl.classList.remove('streaming');
     }
   }
@@ -1455,7 +1461,7 @@ function updateStreamingMessage(session) {
     }
     session.containerEl.appendChild(el);
   }
-  el.innerHTML = formatMarkdown(session.pendingText);
+  setElementHtml(el, formatMarkdown(session.pendingText));
   scrollToBottom(session);
 }
 
@@ -1575,7 +1581,7 @@ function appendMessage(role, content, session, attachments = null) {
       headerHtml += '</div>';
     }
 
-    div.innerHTML = headerHtml + formatMarkdown(content);
+    setElementHtml(div, headerHtml + formatMarkdown(content));
 
     // Store metadata on element for history loading
     if (timestamp) div.dataset.timestamp = timestamp;
@@ -1591,9 +1597,9 @@ function appendMessage(role, content, session, attachments = null) {
       ).join('');
       contentHtml += `<div class="message-images">${imagesHtml}</div>`;
     }
-    div.innerHTML = contentHtml;
+    setElementHtml(div, contentHtml);
   } else {
-    div.innerHTML = escapeHtml(content);
+    div.textContent = content;
   }
 
   session.containerEl.appendChild(div);
@@ -1839,7 +1845,7 @@ function maybeCluster(session) {
 
     const header = document.createElement('div');
     header.className = 'tool-cluster-header';
-    header.innerHTML = '<span class="tool-cluster-chevron">&#x25BE;</span> <span class="tool-cluster-summary"></span>';
+    setElementHtml(header, '<span class="tool-cluster-chevron">&#x25BE;</span> <span class="tool-cluster-summary"></span>');
     header.classList.add('expanded');
 
     const body = document.createElement('div');
@@ -1931,7 +1937,7 @@ function appendToolMessage(tool, summary, id, status, session, metadata = null, 
   const statusText = status === 'running' ? '⋯' : status === 'success' ? '✓' : '✗';
   const durationHtml = status === 'running' ? '<span class="tool-pill-duration">0.0s</span>' : '';
 
-  div.innerHTML = `
+  setElementHtml(div, `
     <div class="tool-pill-header expanded" data-tool-id="${escapeHtml(id || '')}">
       <div class="tool-pill-top">
         <div style="display: flex; align-items: center; gap: 4px;">
@@ -1947,7 +1953,7 @@ function appendToolMessage(tool, summary, id, status, session, metadata = null, 
       </div>
     </div>
     <div class="tool-pill-output">${detailsHtml ? `<div class="tool-pill-output-command">${detailsHtml}</div>` : ''}</div>
-  `;
+  `);
 
   session.containerEl.appendChild(div);
   scrollToBottom(session);
@@ -2068,7 +2074,7 @@ function renderQuestion(data, session) {
     <button class="question-submit" disabled>Submit Answer</button>
   `;
 
-  div.innerHTML = html;
+  setElementHtml(div, html);
   session.containerEl.appendChild(div);
 
   div.querySelectorAll('.question-option').forEach(opt => {
@@ -2091,7 +2097,7 @@ function renderPlanConfirmation(data, session) {
   div.className = 'message plan-confirmation-block';
   div.dataset.confirmationId = data.id;
 
-  div.innerHTML = `
+  setElementHtml(div, `
     <div class="plan-confirmation-header">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M9 11l3 3L22 4"/>
@@ -2107,7 +2113,7 @@ function renderPlanConfirmation(data, session) {
       <input type="text" class="plan-feedback-input" placeholder="What should be revised? (optional)">
       <button class="plan-confirm-btn plan-send-feedback-btn">Send Feedback</button>
     </div>
-  `;
+  `);
 
   // Approve button handler
   div.querySelector('.plan-approve-btn').addEventListener('click', () => {
@@ -2270,7 +2276,7 @@ function markPlanConfirmationSubmitted(element, status) {
   element.classList.add('submitted');
   const actions = element.querySelector('.plan-confirmation-actions');
   const feedbackContainer = element.querySelector('.plan-feedback-container');
-  if (actions) actions.innerHTML = `<span class="plan-status plan-status-${status}">${status === 'approved' ? 'Plan approved' : 'Plan rejected — revising...'}</span>`;
+  if (actions) setElementHtml(actions, `<span class="plan-status plan-status-${status}">${status === 'approved' ? 'Plan approved' : 'Plan rejected — revising...'}</span>`);
   if (feedbackContainer) feedbackContainer.classList.add('hidden');
 }
 
@@ -2285,12 +2291,12 @@ function clearMessages(session) {
   session = session || getActiveSession();
   if (!session?.containerEl) return;
   const isResuming = !!session.sessionId;
-  session.containerEl.innerHTML = `
+  setElementHtml(session.containerEl, `
     <div class="welcome-message">
       <h2>${isResuming ? 'Continuing Session' : 'New Session'}</h2>
       <p>${isResuming ? 'Continuing session - conversation context preserved.' : 'New session - no conversation history.'}</p>
     </div>
-  `;
+  `);
   session.pendingText = '';
 }
 
@@ -2653,7 +2659,7 @@ function renderSlashCommands(commands) {
   const session = getActiveSession();
   if (session) session.slashCommandSelectedIndex = 0;
 
-  slashCommandsEl.innerHTML = commands.map((cmd, i) => {
+  setElementHtml(slashCommandsEl, commands.map((cmd, i) => {
     const sourceClass = `source-${cmd.source || 'builtin'}`;
     const sourceLabel = ['global', 'project', 'skill'].includes(cmd.source) ? cmd.source : '';
     return `
@@ -2665,7 +2671,7 @@ function renderSlashCommands(commands) {
         <div class="slash-command-desc">${escapeHtml(cmd.desc)}</div>
       </div>
     `;
-  }).join('');
+  }).join(''));
 }
 
 // Event delegation for slash commands (avoids memory leaks)
@@ -2821,16 +2827,16 @@ function renderFileMentions(files, displayState = 'normal') {
   if (session) session.fileMentionSelectedIndex = 0;
 
   if (displayState === 'no-project') {
-    fileMentionsEl.innerHTML = '<div class="file-mention-no-project">Select a project to search files</div>';
+    setElementHtml(fileMentionsEl, '<div class="file-mention-no-project">Select a project to search files</div>');
     return;
   }
 
   if (files.length === 0) {
-    fileMentionsEl.innerHTML = '<div class="file-mention-empty">No files found</div>';
+    setElementHtml(fileMentionsEl, '<div class="file-mention-empty">No files found</div>');
     return;
   }
 
-  fileMentionsEl.innerHTML = files.map((file, i) => {
+  setElementHtml(fileMentionsEl, files.map((file, i) => {
     const icon = getFileIcon(file);
     return `
       <div class="file-mention-item${i === 0 ? ' selected' : ''}" data-file="${escapeAttr(file)}">
@@ -2838,7 +2844,7 @@ function renderFileMentions(files, displayState = 'normal') {
         <span class="file-path">${escapeHtml(file)}</span>
       </div>
     `;
-  }).join('');
+  }).join(''));
 }
 
 // Event delegation for file mentions (avoids memory leaks)
@@ -3062,7 +3068,7 @@ projectSearch.addEventListener('focus', () => {
 });
 
 async function searchProjects(query) {
-  projectList.innerHTML = '<div class="loading">Searching</div>';
+  setElementHtml(projectList, '<div class="loading">Searching</div>');
   sessionList.classList.add('hidden');
   projectList.classList.remove('hidden');
   newSessionBtn.classList.add('hidden');
@@ -3071,11 +3077,11 @@ async function searchProjects(query) {
     const projects = await api(`/api/projects/search?q=${encodeURIComponent(query)}`);
     
     if (projects.length === 0) {
-      projectList.innerHTML = `
+      setElementHtml(projectList, `
         <div class="empty-state">
           ${query ? 'No projects match your search' : 'No Claude projects found'}
         </div>
-      `;
+      `);
       return;
     }
     
@@ -3089,7 +3095,7 @@ async function searchProjects(query) {
       return 0;
     });
 
-    projectList.innerHTML = projects.map(p => {
+    setElementHtml(projectList, projects.map(p => {
       const favored = isFavorite(p.path);
       return `
         <div class="project-item" data-name="${escapeAttr(p.name)}" data-path="${escapeAttr(p.path)}">
@@ -3103,7 +3109,7 @@ async function searchProjects(query) {
           <span class="project-path">${escapeHtml(p.path)}</span>
         </div>
       `;
-    }).join('');
+    }).join(''));
 
     // Add click handlers for favorite buttons
     projectList.querySelectorAll('.favorite-btn').forEach(btn => {
@@ -3123,7 +3129,7 @@ async function searchProjects(query) {
     });
     
   } catch (err) {
-    projectList.innerHTML = `<div class="empty-state">Error: ${escapeHtml(err.message)}</div>`;
+    setElementHtml(projectList, `<div class="empty-state">Error: ${escapeHtml(err.message)}</div>`);
   }
 }
 
@@ -3180,28 +3186,28 @@ async function selectProject(name, path, displayName, skipHashUpdate = false) {
     // Load and display sessions in sidebar
     projectList.classList.add('hidden');
     sessionList.classList.remove('hidden');
-    sessionsContainer.innerHTML = '<div class="loading">Loading sessions</div>';
+    setElementHtml(sessionsContainer, '<div class="loading">Loading sessions</div>');
     newSessionBtn.classList.remove('hidden');
 
     try {
       const sessions = await api(`/api/projects/${encodeURIComponent(name)}/sessions`);
 
       if (sessions.length === 0) {
-        sessionsContainer.innerHTML = '<div class="empty-state">No sessions yet</div>';
+        setElementHtml(sessionsContainer, '<div class="empty-state">No sessions yet</div>');
       } else {
-        sessionsContainer.innerHTML = sessions.map(s => `
+        setElementHtml(sessionsContainer, sessions.map(s => `
           <div class="session-item" data-id="${escapeAttr(s.id)}">
             <span class="session-preview">${escapeHtml(s.preview)}</span>
             <span class="session-date">${formatDate(s.lastModified)}</span>
           </div>
-        `).join('');
+        `).join(''));
 
         sessionsContainer.querySelectorAll('.session-item').forEach(el => {
           el.addEventListener('click', () => resumeSession(el.dataset.id));
         });
       }
     } catch (err) {
-      sessionsContainer.innerHTML = `<div class="empty-state">Error: ${escapeHtml(err.message)}</div>`;
+      setElementHtml(sessionsContainer, `<div class="empty-state">Error: ${escapeHtml(err.message)}</div>`);
     }
 
     return;
@@ -3235,7 +3241,7 @@ async function selectProject(name, path, displayName, skipHashUpdate = false) {
 
   projectList.classList.add('hidden');
   sessionList.classList.remove('hidden');
-  sessionsContainer.innerHTML = '<div class="loading">Loading sessions</div>';
+  setElementHtml(sessionsContainer, '<div class="loading">Loading sessions</div>');
   newSessionBtn.classList.remove('hidden');
 
   // Initialize container with welcome message
@@ -3245,21 +3251,21 @@ async function selectProject(name, path, displayName, skipHashUpdate = false) {
     const sessions = await api(`/api/projects/${encodeURIComponent(name)}/sessions`);
 
     if (sessions.length === 0) {
-      sessionsContainer.innerHTML = '<div class="empty-state">No sessions yet</div>';
+      setElementHtml(sessionsContainer, '<div class="empty-state">No sessions yet</div>');
     } else {
-      sessionsContainer.innerHTML = sessions.map(s => `
+      setElementHtml(sessionsContainer, sessions.map(s => `
         <div class="session-item" data-id="${escapeAttr(s.id)}">
           <span class="session-preview">${escapeHtml(s.preview)}</span>
           <span class="session-date">${formatDate(s.lastModified)}</span>
         </div>
-      `).join('');
+      `).join(''));
 
       sessionsContainer.querySelectorAll('.session-item').forEach(el => {
         el.addEventListener('click', () => resumeSession(el.dataset.id));
       });
     }
   } catch (err) {
-    sessionsContainer.innerHTML = `<div class="empty-state">Error: ${escapeHtml(err.message)}</div>`;
+    setElementHtml(sessionsContainer, `<div class="empty-state">Error: ${escapeHtml(err.message)}</div>`);
   }
 
   saveSessionState();
@@ -3272,23 +3278,23 @@ async function loadSessionHistory(session) {
   }
 
   if (session.containerEl) {
-    session.containerEl.innerHTML = '<div class="loading">Loading history</div>';
+    setElementHtml(session.containerEl, '<div class="loading">Loading history</div>');
   }
 
   try {
     const projectName = session.project.name;
     const { messages } = await api(`/api/projects/${encodeURIComponent(projectName)}/sessions/${encodeURIComponent(session.sessionId)}/messages?limit=50`);
 
-    if (session.containerEl) session.containerEl.innerHTML = '';
+    if (session.containerEl) session.containerEl.replaceChildren();
 
     if (messages.length === 0) {
       if (session.containerEl) {
-        session.containerEl.innerHTML = `
+        setElementHtml(session.containerEl, `
           <div class="welcome-message">
             <h2>Session Resumed</h2>
             <p>Continue your conversation with Claude.</p>
           </div>
-        `;
+        `);
       }
     } else {
       for (const msg of messages) {
@@ -3315,7 +3321,7 @@ async function loadSessionHistory(session) {
             headerHtml += '</div>';
           }
 
-          div.innerHTML = headerHtml + formatMarkdown(msg.content);
+          setElementHtml(div, headerHtml + formatMarkdown(msg.content));
 
           // Store metadata on element for reference
           if (msg.timestamp) div.dataset.timestamp = msg.timestamp;
@@ -3347,12 +3353,12 @@ async function loadSessionHistory(session) {
     // NOTE: Do NOT clear session.sessionId here - the Claude SDK resume
     // works independently of UI history display
     if (session.containerEl) {
-      session.containerEl.innerHTML = `
+      setElementHtml(session.containerEl, `
         <div class="welcome-message">
           <h2>Session Resumed</h2>
           <p>Could not load history. Continue your conversation.</p>
         </div>
-      `;
+      `);
     }
   }
 
@@ -3546,7 +3552,7 @@ function linkifyFilePaths(text) {
   // Excludes paths already in code blocks or URLs
   const pathPattern = /(^|\s)(~?\.?\.?\/[\w\-./~\\]+)/g;
 
-  return text.replace(pathPattern, (match, prefix, path) => {
+  return text.replace(pathPattern, (_match, prefix, path) => {
     return `${prefix}<a class="file-link" href="#" data-path="${escapeAttr(path)}">${escapeHtml(path)}</a>`;
   });
 }
@@ -3809,12 +3815,12 @@ function renderAttachmentPreview() {
   const session = getActiveSession();
   if (!session || session.attachments.length === 0) {
     attachmentPreviewEl.classList.add('hidden');
-    attachmentPreviewEl.innerHTML = '';
+    attachmentPreviewEl.replaceChildren();
     return;
   }
 
   attachmentPreviewEl.classList.remove('hidden');
-  attachmentPreviewEl.innerHTML = session.attachments.map(att => {
+  setElementHtml(attachmentPreviewEl, session.attachments.map(att => {
     if (att.type === 'image') {
       return `
         <div class="attachment-item image" data-id="${att.id}">
@@ -3832,7 +3838,7 @@ function renderAttachmentPreview() {
         <button class="attachment-remove" aria-label="Remove attachment">&times;</button>
       </div>
     `;
-  }).join('');
+  }).join(''));
 }
 
 // Remove attachment by ID via event delegation
@@ -4043,7 +4049,7 @@ function initMonacoEditor() {
     }
   });
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     require(['vs/editor/editor.main'], function() {
       monacoEditor = monaco.editor.create(editorElement, {
         value: '',
@@ -4118,7 +4124,7 @@ async function loadFileTree() {
   const session = getActiveSession();
   if (!session) return;
 
-  fileTreeContent.innerHTML = '<div class="file-tree-loading">Loading...</div>';
+  setElementHtml(fileTreeContent, '<div class="file-tree-loading">Loading...</div>');
 
   try {
     // Load top-level directory only
@@ -4138,7 +4144,7 @@ async function loadFileTree() {
     renderFileTree();
   } catch (err) {
     console.error('[FileTree] Error:', err);
-    fileTreeContent.innerHTML = `<div class="file-tree-error">Error: ${escapeHtml(err.message)}</div>`;
+    setElementHtml(fileTreeContent, `<div class="file-tree-error">Error: ${escapeHtml(err.message)}</div>`);
   }
 }
 
@@ -4173,11 +4179,11 @@ async function loadDirectory(path) {
 
 // Render file tree (lazy loading)
 async function renderFileTree() {
-  fileTreeContent.innerHTML = '<div class="file-tree-loading">Loading...</div>';
+  setElementHtml(fileTreeContent, '<div class="file-tree-loading">Loading...</div>');
 
   const rootItems = await loadDirectory('');
-  const html = renderDirectoryItems(rootItems, '', 0, state.fileEditor.searchQuery.toLowerCase());
-  fileTreeContent.innerHTML = html || '<div class="file-tree-empty">No files found</div>';
+  const html = renderDirectoryItems(rootItems, 0, state.fileEditor.searchQuery.toLowerCase());
+  setElementHtml(fileTreeContent, html || '<div class="file-tree-empty">No files found</div>');
 
   // Restore expanded folders
   fileTreeContent.querySelectorAll('.tree-folder-header').forEach(header => {
@@ -4200,7 +4206,7 @@ async function renderFileTree() {
 }
 
 // Render directory items
-function renderDirectoryItems(items, basePath, depth, searchQuery) {
+function renderDirectoryItems(items, depth, searchQuery) {
   const entries = items
     .filter(item => {
       if (searchQuery) {
@@ -4256,11 +4262,11 @@ async function expandFolder(header, childrenDiv, path) {
   const items = await loadDirectory(path);
 
   if (items.length === 0) {
-    childrenDiv.innerHTML = '<div class="tree-folder-empty">Empty folder</div>';
+    setElementHtml(childrenDiv, '<div class="tree-folder-empty">Empty folder</div>');
   } else {
     // Calculate depth from path (number of path separators)
     const depth = path ? path.split('/').filter(Boolean).length : 0;
-    childrenDiv.innerHTML = renderDirectoryItems(items, path, depth + 1, state.fileEditor.searchQuery.toLowerCase());
+    setElementHtml(childrenDiv, renderDirectoryItems(items, depth + 1, state.fileEditor.searchQuery.toLowerCase()));
     childrenDiv.classList.remove('hidden');
 
     // Recursively expand nested folders if they were saved
