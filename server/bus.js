@@ -3,6 +3,8 @@
  * Manages per-user event channels with automatic cleanup
  */
 
+import logger from "./logger.js";
+
 // Map of username -> Set<callback>
 const subscribers = new Map();
 
@@ -13,21 +15,21 @@ const subscribers = new Map();
  * @returns {Function} Unsubscribe function
  */
 export function subscribe(username, callback) {
-  if (!subscribers.has(username)) {
-    subscribers.set(username, new Set());
-  }
-  subscribers.get(username).add(callback);
+	if (!subscribers.has(username)) {
+		subscribers.set(username, new Set());
+	}
+	subscribers.get(username).add(callback);
 
-  // Return unsubscribe function
-  return () => {
-    const subs = subscribers.get(username);
-    if (subs) {
-      subs.delete(callback);
-      if (subs.size === 0) {
-        subscribers.delete(username);
-      }
-    }
-  };
+	// Return unsubscribe function
+	return () => {
+		const subs = subscribers.get(username);
+		if (subs) {
+			subs.delete(callback);
+			if (subs.size === 0) {
+				subscribers.delete(username);
+			}
+		}
+	};
 }
 
 /**
@@ -40,21 +42,21 @@ export function subscribe(username, callback) {
  * @param {string} [event.timestamp] - ISO timestamp (auto-set if not provided)
  */
 export function publish(username, event) {
-  const subs = subscribers.get(username);
-  if (!subs) return;
+	const subs = subscribers.get(username);
+	if (!subs) return;
 
-  const payload = {
-    ...event,
-    timestamp: event.timestamp || new Date().toISOString()
-  };
+	const payload = {
+		...event,
+		timestamp: event.timestamp || new Date().toISOString(),
+	};
 
-  for (const cb of subs) {
-    try {
-      cb(payload);
-    } catch (err) {
-      console.error('[Bus] Subscriber error:', err);
-    }
-  }
+	for (const cb of subs) {
+		try {
+			cb(payload);
+		} catch (err) {
+			logger.error("[Bus] Subscriber error:", err);
+		}
+	}
 }
 
 /**
@@ -63,5 +65,5 @@ export function publish(username, event) {
  * @returns {number} Number of active subscribers
  */
 export function getSubscriberCount(username) {
-  return subscribers.get(username)?.size || 0;
+	return subscribers.get(username)?.size || 0;
 }

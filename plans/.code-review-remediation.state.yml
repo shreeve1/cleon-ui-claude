@@ -1,0 +1,65 @@
+plan_file: plans/code-review-remediation.md
+status: build_only
+build_audits:
+  - wave: 1
+    reviewer: pi
+    reviewer_model: null
+    started: "2026-06-09T18:00:00Z"
+    files_audited:
+      - server/shared/project-paths.js
+      - server/projects.js
+      - server/files.js
+    outcome: passed
+    skip_reason: null
+    error_excerpt: null
+    attempts:
+      - attempt: 1
+        kind: initial
+        started: "2026-06-09T18:00:00Z"
+        findings:
+          critical: []
+          warning: []
+          note:
+            - "[NOTE] No findings — diff looks correct."
+        counts: { critical: 0, warning: 0, note: 1 }
+  - wave: 2
+    reviewer: pi
+    reviewer_model: null
+    started: "2026-06-09T18:03:00Z"
+    files_audited:
+      - server/bus.js
+      - server/uploads.js
+      - server/commands.js
+      - server/projects.js
+      - server/auth.js
+      - server/claude.js
+    outcome: auto_fixed
+    skip_reason: null
+    error_excerpt: null
+    attempts:
+      - attempt: 1
+        kind: initial
+        started: "2026-06-09T18:03:00Z"
+        findings:
+          critical:
+            - "[CRITICAL] `err.message` as 2nd logger arg silently dropped in 4 places\n  Detail: `logger.error(\"[Claude] Failed to load session history:\", err.message)` and 3 similar in commands.js — second arg is a string, winston printf drops it. Error reason absent from log output.\n  Affected files: server/claude.js, server/commands.js\n  Suggested fix: inline into template literal"
+          warning:
+            - "[WARNING] `JSON.stringify` answer payload as 2nd arg silently dropped\n  Detail: `logger.info(...)` with JSON.stringify as 2nd arg in claude.js line ~746\n  Affected files: server/claude.js\n  Suggested fix: inline"
+          note:
+            - "[NOTE] No findings beyond the two issues above"
+        counts: { critical: 1, warning: 1, note: 1 }
+        fix_summary: "Inlined err.message and JSON.stringify into template literals across claude.js and commands.js"
+        files_edited:
+          - server/claude.js
+          - server/commands.js
+        validation_command: "npx vitest run"
+        validation_passed: true
+      - attempt: 2
+        kind: post_fix_reaudit
+        started: "2026-06-09T18:05:00Z"
+        findings:
+          critical: []
+          warning: []
+          note:
+            - "[NOTE] No findings — diff looks correct."
+        counts: { critical: 0, warning: 0, note: 1 }

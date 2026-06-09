@@ -16,12 +16,19 @@ import { resolve } from "path";
 // 1. Static Analysis - server/claude.js caller verification
 // ===========================================================================
 describe("Static Analysis - server/claude.js callers of broadcastTaskUpdate", () => {
-	const claudeJsPath = resolve(import.meta.dirname, "../../server/claude.js");
-	const claudeJs = readFileSync(claudeJsPath, "utf-8");
+	const claudeIndexJsPath = resolve(
+		import.meta.dirname,
+		"../../server/claude/index.js",
+	);
+	const claudeTransformJsPath = resolve(
+		import.meta.dirname,
+		"../../server/claude/transform.js",
+	);
+	const claudeJs = `${readFileSync(claudeIndexJsPath, "utf-8")}\n${readFileSync(claudeTransformJsPath, "utf-8")}`;
 
 	it("imports broadcastTaskUpdate from tasks.js", () => {
 		expect(claudeJs).toContain(
-			'import { taskManager, broadcastTaskUpdate } from "./tasks.js"',
+			'import { taskManager, broadcastTaskUpdate } from "../tasks.js"',
 		);
 	});
 
@@ -138,8 +145,15 @@ describe("Static Analysis - server/claude.js callers of broadcastTaskUpdate", ()
 // 2. Verify Scope and Context
 // ===========================================================================
 describe("Scope and Context Verification", () => {
-	const claudeJsPath = resolve(import.meta.dirname, "../../server/claude.js");
-	const claudeJs = readFileSync(claudeJsPath, "utf-8");
+	const claudeIndexJsPath = resolve(
+		import.meta.dirname,
+		"../../server/claude/index.js",
+	);
+	const claudeTransformJsPath = resolve(
+		import.meta.dirname,
+		"../../server/claude/transform.js",
+	);
+	const claudeJs = `${readFileSync(claudeIndexJsPath, "utf-8")}\n${readFileSync(claudeTransformJsPath, "utf-8")}`;
 
 	it("transformMessage receives username as a parameter", () => {
 		expect(claudeJs).toMatch(
@@ -190,14 +204,23 @@ describe("Scope and Context Verification", () => {
 // 3. Message Contract Verification
 // ===========================================================================
 describe("Message Contract with Frontend", () => {
-	const appJsPath = resolve(import.meta.dirname, "../../public/app.js");
+	const frontendPaths = [
+		"../../public/app.js",
+		"../../public/js/ws-sse.js",
+		"../../public/js/tasks-ui.js",
+	];
 	let appJs = "";
 
 	try {
-		appJs = readFileSync(appJsPath, "utf-8");
+		const frontendJs = frontendPaths
+			.map((path) => readFileSync(resolve(import.meta.dirname, path), "utf-8"))
+			.join("\n");
+		appJs = `${frontendJs}\n${frontendJs.replaceAll('"', "'")}`;
 	} catch (err) {
 		// File might not exist or be accessible
-		console.log("Warning: Could not read app.js for contract verification");
+		console.log(
+			"Warning: Could not read frontend source for contract verification",
+		);
 	}
 
 	it("frontend handleServerEvent expects type at top level", () => {

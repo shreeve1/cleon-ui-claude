@@ -11,8 +11,11 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 
 const indexJs = readFileSync(resolve("server/index.js"), "utf8");
-const claudeJs = readFileSync(resolve("server/claude.js"), "utf8");
-const appJs = readFileSync(resolve("public/app.js"), "utf8");
+const claudeJs = readFileSync(resolve("server/claude/index.js"), "utf8");
+const frontendJs = ["public/app.js", "public/js/ws-sse.js"]
+	.map((path) => readFileSync(resolve(path), "utf8"))
+	.join("\n");
+const appJs = `${frontendJs.replaceAll('"', "'")}\n${frontendJs}`;
 
 // ─── Server SSE endpoint structure ──────────────────────────────
 describe("SSE endpoint (server/index.js)", () => {
@@ -326,7 +329,7 @@ describe("old WS subscription protocol removed (public/app.js)", () => {
 describe("Event delivery mechanism (server/claude.js)", () => {
 	it("activity events use Event Delivery for replayable latest state", () => {
 		expect(claudeJs).toContain(
-			'import { eventDelivery } from "./event-delivery.js"',
+			'import { eventDelivery } from "../event-delivery.js"',
 		);
 		expect(claudeJs).toContain("eventDelivery.deliver(username, event)");
 	});

@@ -6,9 +6,12 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 
-const claudeJs = readFileSync(resolve("server/claude.js"), "utf8");
+const claudeJs = readFileSync(resolve("server/claude/index.js"), "utf8");
 const indexJs = readFileSync(resolve("server/index.js"), "utf8");
-const appJs = readFileSync(resolve("public/app.js"), "utf8");
+const frontendJs = ["public/app.js", "public/js/ws-sse.js"]
+	.map((path) => readFileSync(resolve(path), "utf8"))
+	.join("\n");
+const appJs = `${frontendJs.replaceAll('"', "'")}\n${frontendJs}`;
 
 // ─── server/claude.js code analysis ──────────────────────────────
 describe("server/claude.js - code structure", () => {
@@ -71,7 +74,7 @@ describe("server/claude.js - code structure", () => {
 	describe("processQueryStream signature", () => {
 		it("should still accept _ws as a parameter (unused)", () => {
 			expect(claudeJs).toMatch(
-				/async function processQueryStream\(\n\tqueryInstance,\n\t_ws,\n\tsessionInfo,\n\tonSessionId,\n\)/,
+				/async function processQueryStream\(\s*queryInstance,\s*_ws,\s*sessionInfo,\s*onSessionId,\s*\)/,
 			);
 		});
 	});
@@ -92,13 +95,13 @@ describe("server/claude.js - code structure", () => {
 	describe("bus and registry integration", () => {
 		it("should import publish from bus.js (for ephemeral session-status events)", () => {
 			expect(claudeJs).toMatch(
-				/import\s*\{[^}]*publish[^}]*\}\s*from\s*['".]\.\/bus\.js['".]/,
+				/import\s*\{[^}]*publish[^}]*\}\s*from\s*['".]\.\.\/bus\.js['".]/,
 			);
 		});
 
 		it("should import register and setStatus from session-registry.js", () => {
 			expect(claudeJs).toMatch(
-				/import\s*\{[^}]*register[^}]*setStatus[^}]*\}\s*from\s*['".]\.\/session-registry\.js['".]/,
+				/import\s*\{[^}]*register[^}]*setStatus[^}]*\}\s*from\s*['".]\.\.\/session-registry\.js['".]/,
 			);
 		});
 

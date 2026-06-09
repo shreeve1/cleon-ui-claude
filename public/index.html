@@ -1,205 +1,401 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
-  <meta name="theme-color" content="#0a0a0f">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>Cleon UI</title>
-  <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29/themes/prism-tomorrow.min.css">
-</head>
-<body>
-  <div id="app">
-    <div id="auth-screen" class="screen">
-      <div class="auth-container">
-        <h1>Cleon UI</h1>
-        <form id="auth-form">
-          <input type="text" id="username" placeholder="Username" autocomplete="username" required>
-          <input type="password" id="password" placeholder="Password" autocomplete="current-password" required>
-          <button type="submit" id="auth-btn">Log In</button>
-        </form>
-        <p id="auth-error" class="error hidden"></p>
-      </div>
-    </div>
-
-    <div id="main-screen" class="screen hidden">
-      <header id="header">
-        <button id="menu-btn" class="icon-btn" aria-label="Menu">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="3" y1="6" x2="21" y2="6"></line>
-            <line x1="3" y1="12" x2="21" y2="12"></line>
-            <line x1="3" y1="18" x2="21" y2="18"></line>
-          </svg>
-        </button>
-        <div id="session-info">
-          <span id="project-name">Select a project</span>
-          <span id="token-usage" class="hidden"></span>
-          <div id="context-bar" class="hidden">
-            <span id="context-model" class="context-model"></span>
-            <div id="context-usage-bar">
-              <div id="context-usage-fill"></div>
-            </div>
-            <span id="context-usage-text"></span>
-          </div>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content"
+    />
+    <meta name="theme-color" content="#0a0a0f" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <title>Cleon UI</title>
+    <link rel="stylesheet" href="style.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/prismjs@1.29/themes/prism-tomorrow.min.css"
+    />
+  </head>
+  <body>
+    <div id="app">
+      <div id="auth-screen" class="screen">
+        <div class="auth-container">
+          <h1>Cleon UI</h1>
+          <form id="auth-form">
+            <input
+              type="text"
+              id="username"
+              placeholder="Username"
+              autocomplete="username"
+              required
+            />
+            <input
+              type="password"
+              id="password"
+              placeholder="Password"
+              autocomplete="current-password"
+              required
+            />
+            <button type="submit" id="auth-btn">Log In</button>
+          </form>
+          <p id="auth-error" class="error hidden"></p>
         </div>
-        <div id="header-actions">
-          <input type="file" id="file-input" accept="image/*,.txt,.md,.pdf" multiple hidden>
-          <button type="button" id="attach-btn" class="icon-btn" title="Attach file" disabled>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+      </div>
+
+      <div id="main-screen" class="screen hidden">
+        <header id="header">
+          <button id="menu-btn" class="icon-btn" aria-label="Menu">
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
             </svg>
           </button>
-          <button type="button" id="files-btn" class="icon-btn" title="Browse files" disabled>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-            </svg>
-          </button>
-          <button type="button" id="mode-btn" class="icon-btn mode-bypass" title="Bypass Permissions" disabled>
-            <svg class="mode-icon mode-icon-default" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-            </svg>
-            <svg class="mode-icon mode-icon-plan" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
-              <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
-            </svg>
-            <svg class="mode-icon mode-icon-bypass" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-            </svg>
-          </button>
-          <div id="model-btn-wrapper">
-            <button type="button" id="model-btn" class="icon-btn model-default" title="Sonnet" disabled>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+          <div id="session-info">
+            <span id="project-name">Select a project</span>
+            <span id="token-usage" class="hidden"></span>
+            <div id="context-bar" class="hidden">
+              <span id="context-model" class="context-model"></span>
+              <div id="context-usage-bar">
+                <div id="context-usage-fill"></div>
+              </div>
+              <span id="context-usage-text"></span>
+            </div>
+          </div>
+          <div id="header-actions">
+            <input
+              type="file"
+              id="file-input"
+              accept="image/*,.txt,.md,.pdf"
+              multiple
+              hidden
+            />
+            <button
+              type="button"
+              id="attach-btn"
+              class="icon-btn"
+              title="Attach file"
+              disabled
+            >
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
+                />
               </svg>
             </button>
-            <div id="model-dropdown" class="dropdown-menu hidden">
-              <button class="dropdown-item" data-model="haiku">Haiku</button>
-              <button class="dropdown-item" data-model="sonnet">Sonnet</button>
-              <button class="dropdown-item" data-model="opus">Opus</button>
+            <button
+              type="button"
+              id="files-btn"
+              class="icon-btn"
+              title="Browse files"
+              disabled
+            >
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+                />
+              </svg>
+            </button>
+            <button
+              type="button"
+              id="mode-btn"
+              class="icon-btn mode-bypass"
+              title="Bypass Permissions"
+              disabled
+            >
+              <svg
+                class="mode-icon mode-icon-default"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+                />
+              </svg>
+              <svg
+                class="mode-icon mode-icon-plan"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
+                />
+                <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+              </svg>
+              <svg
+                class="mode-icon mode-icon-bypass"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+              </svg>
+            </button>
+            <div id="model-btn-wrapper">
+              <button
+                type="button"
+                id="model-btn"
+                class="icon-btn model-default"
+                title="Sonnet"
+                disabled
+              >
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <circle cx="12" cy="12" r="3" />
+                  <path
+                    d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"
+                  />
+                </svg>
+              </button>
+              <div id="model-dropdown" class="dropdown-menu hidden">
+                <button class="dropdown-item" data-model="haiku">Haiku</button>
+                <button class="dropdown-item" data-model="sonnet">
+                  Sonnet
+                </button>
+                <button class="dropdown-item" data-model="opus">Opus</button>
+              </div>
             </div>
+            <button id="abort-btn" class="icon-btn hidden" aria-label="Stop">
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <rect x="6" y="6" width="12" height="12" rx="2"></rect>
+              </svg>
+            </button>
           </div>
-          <button id="abort-btn" class="icon-btn hidden" aria-label="Stop">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="6" y="6" width="12" height="12" rx="2"></rect>
-            </svg>
-          </button>
-        </div>
-      </header>
+        </header>
 
-      <aside id="sidebar" class="hidden">
-        <div class="sidebar-header">
-          <input type="text" id="project-search" placeholder="Search projects by path...">
-          <button id="close-sidebar" class="icon-btn" aria-label="Close">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
-        </div>
-        <button id="new-session-btn" class="hidden">+ New Session</button>
-        <div id="project-list"></div>
-        <div id="session-list" class="hidden">
-          <button id="back-to-projects" class="back-btn">&larr; Back to projects</button>
-          <div id="sessions-container"></div>
-        </div>
-      </aside>
-      <div id="sidebar-overlay" class="hidden"></div>
+        <aside id="sidebar" class="hidden">
+          <div class="sidebar-header">
+            <input
+              type="text"
+              id="project-search"
+              placeholder="Search projects by path..."
+            />
+            <button id="close-sidebar" class="icon-btn" aria-label="Close">
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+          <button id="new-session-btn" class="hidden">+ New Session</button>
+          <div id="project-list"></div>
+          <div id="session-list" class="hidden">
+            <button id="back-to-projects" class="back-btn">
+              &larr; Back to projects
+            </button>
+            <div id="sessions-container"></div>
+          </div>
+        </aside>
+        <div id="sidebar-overlay" class="hidden"></div>
 
-      <main id="chat">
-        <div id="activity-status" class="activity-status hidden" role="status" aria-live="polite">
-          <span class="activity-indicator"></span>
-          <span class="activity-label"></span>
-          <span class="activity-elapsed hidden"></span>
+        <main id="chat">
+          <div
+            id="activity-status"
+            class="activity-status hidden"
+            role="status"
+            aria-live="polite"
+          >
+            <span class="activity-indicator"></span>
+            <span class="activity-label"></span>
+            <span class="activity-elapsed hidden"></span>
+          </div>
+          <div id="session-containers"></div>
+          <button
+            id="scroll-to-bottom-btn"
+            class="hidden"
+            aria-label="Scroll to bottom"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+            <span id="unread-badge" class="hidden">0</span>
+          </button>
+          <div id="session-bar">
+            <div id="session-tabs"></div>
+            <button
+              id="new-session-tab-btn"
+              class="session-tab-btn"
+              title="New session"
+            >
+              +
+            </button>
+          </div>
+          <form id="chat-form">
+            <div id="slash-commands" class="hidden"></div>
+            <div id="file-mentions" class="hidden"></div>
+            <div id="attachment-preview" class="hidden"></div>
+            <textarea
+              id="chat-input"
+              placeholder="Message Claude..."
+              rows="1"
+              disabled
+            ></textarea>
+            <button type="submit" id="send-btn" disabled>
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
+              </svg>
+            </button>
+          </form>
+        </main>
+        <div id="drop-zone-overlay" class="hidden">
+          <div class="drop-zone-content">
+            <svg
+              width="48"
+              height="48"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+            <span>Drop files here</span>
+          </div>
         </div>
-        <div id="session-containers"></div>
-        <button id="scroll-to-bottom-btn" class="hidden" aria-label="Scroll to bottom">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="6 9 12 15 18 9"></polyline>
-          </svg>
-          <span id="unread-badge" class="hidden">0</span>
+
+        <!-- File Tree Drawer -->
+        <aside id="file-tree-drawer" class="hidden">
+          <div class="file-tree-header">
+            <input
+              type="text"
+              id="file-tree-search"
+              placeholder="Search files..."
+            />
+            <button id="close-file-tree" class="icon-btn" aria-label="Close">
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+          <div id="file-tree-content">
+            <div class="file-tree-loading">Loading...</div>
+          </div>
+        </aside>
+        <div id="file-tree-overlay" class="hidden"></div>
+
+        <!-- Full Screen Editor -->
+        <div id="editor-screen" class="hidden">
+          <div id="editor-header">
+            <button
+              id="editor-close"
+              class="icon-btn"
+              aria-label="Close editor"
+            >
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+            <span id="editor-file-path"></span>
+            <span id="editor-status"></span>
+            <button id="editor-save-btn" class="editor-btn" disabled>
+              Save
+            </button>
+          </div>
+          <div id="editor-container">
+            <div id="editor-gutter"></div>
+            <div id="editor" class="monaco-editor-container"></div>
+          </div>
+        </div>
+      </div>
+      <div id="message-context-menu" class="hidden">
+        <button class="ctx-menu-item" data-action="copy-text">
+          Copy Message
         </button>
-        <div id="session-bar">
-          <div id="session-tabs"></div>
-          <button id="new-session-tab-btn" class="session-tab-btn" title="New session">+</button>
-        </div>
-        <form id="chat-form">
-          <div id="slash-commands" class="hidden"></div>
-          <div id="file-mentions" class="hidden"></div>
-          <div id="attachment-preview" class="hidden"></div>
-          <textarea id="chat-input" placeholder="Message Claude..." rows="1" disabled></textarea>
-          <button type="submit" id="send-btn" disabled>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
-            </svg>
-          </button>
-        </form>
-      </main>
-      <div id="drop-zone-overlay" class="hidden">
-        <div class="drop-zone-content">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="17 8 12 3 7 8"/>
-            <line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
-          <span>Drop files here</span>
-        </div>
-      </div>
-
-      <!-- File Tree Drawer -->
-      <aside id="file-tree-drawer" class="hidden">
-        <div class="file-tree-header">
-          <input type="text" id="file-tree-search" placeholder="Search files...">
-          <button id="close-file-tree" class="icon-btn" aria-label="Close">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
-        </div>
-        <div id="file-tree-content">
-          <div class="file-tree-loading">Loading...</div>
-        </div>
-      </aside>
-      <div id="file-tree-overlay" class="hidden"></div>
-
-      <!-- Full Screen Editor -->
-      <div id="editor-screen" class="hidden">
-        <div id="editor-header">
-          <button id="editor-close" class="icon-btn" aria-label="Close editor">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
-          <span id="editor-file-path"></span>
-          <span id="editor-status"></span>
-          <button id="editor-save-btn" class="editor-btn" disabled>Save</button>
-        </div>
-        <div id="editor-container">
-          <div id="editor-gutter"></div>
-          <div id="editor" class="monaco-editor-container"></div>
-        </div>
+        <button class="ctx-menu-item" data-action="copy-code">Copy Code</button>
       </div>
     </div>
-    <div id="message-context-menu" class="hidden">
-      <button class="ctx-menu-item" data-action="copy-text">Copy Message</button>
-      <button class="ctx-menu-item" data-action="copy-code">Copy Code</button>
-    </div>
-  </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29/prism.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29/components/prism-javascript.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29/components/prism-python.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29/components/prism-bash.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29/components/prism-json.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29/components/prism-css.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29/components/prism-typescript.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
-  <script src="app.js"></script>
-</body>
+    <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29/prism.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29/components/prism-javascript.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29/components/prism-python.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29/components/prism-bash.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29/components/prism-json.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29/components/prism-css.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29/components/prism-typescript.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+    <script type="module" src="/app.js"></script>
+  </body>
 </html>
