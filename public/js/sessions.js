@@ -115,6 +115,8 @@ function createSession(project, sessionId = null) {
 		tasks: [], // Active tasks array
 		taskPanelExpanded: false, // Task panel expand/collapse state
 		activityState: null, // Current AI activity state
+		isLoadingHistory: false,
+		watcherBuffer: [],
 	};
 }
 
@@ -210,22 +212,16 @@ function switchToSession(index) {
 
 	// Lazy-load message history for restored sessions
 	if (newSession.needsHistoryLoad) {
-		loadSessionHistory(newSession).then(() => {
-			// Watch after history load completes
-			if (
-				newSession.sessionId &&
-				newSession === getActiveSession() &&
-				state.ws?.readyState === WebSocket.OPEN
-			) {
-				state.ws.send(
-					JSON.stringify({
-						type: "watch-session",
-						projectName: newSession.project.name,
-						sessionId: newSession.sessionId,
-					}),
-				);
-			}
-		});
+		if (newSession.sessionId && state.ws?.readyState === WebSocket.OPEN) {
+			state.ws.send(
+				JSON.stringify({
+					type: "watch-session",
+					projectName: newSession.project.name,
+					sessionId: newSession.sessionId,
+				}),
+			);
+		}
+		loadSessionHistory(newSession);
 	} else if (!newSession.sessionId) {
 		// New session without history - ensure it has welcome message
 		if (!newSession.containerEl.querySelector(".welcome-message")) {
@@ -263,11 +259,7 @@ function switchToSession(index) {
 
 	projectNameEl.textContent =
 		newSession.project.displayName || newSession.project.name;
-	updateTokenUsage(
-		newSession.lastTokenUsage,
-		newSession.lastContextWindow,
-		newSession,
-	);
+	updateTokenUsage(newSession.lastTokenUsage, newSession.lastContextWindow, newSession);
 	renderAttachmentPreview();
 	updateHash(newSession.project.name, newSession.sessionId);
 	renderSessionBar();
@@ -414,6 +406,10 @@ async function loadSessionHistory(session) {
 		clearMessages(session);
 		return;
 	}
+	if (session.isLoadingHistory) return;
+
+	session.isLoadingHistory = true;
+	session.watcherBuffer = session.watcherBuffer || [];
 
 	if (session.containerEl) {
 		setElementHtml(
@@ -526,6 +522,14 @@ async function loadSessionHistory(session) {
 	}
 
 	session.needsHistoryLoad = false;
+	session.isLoadingHistory = false;
+	if (typeof window !== "undefined") {
+		window.dispatchEvent(
+			new CustomEvent("cleon:history-loaded", {
+				detail: { sessionId: session.sessionId },
+			}),
+		);
+	}
 }
 
 export {

@@ -15,15 +15,61 @@ const GRACE_TIMEOUT_MS = 60_000;
 const STAT_POLL_MS = 2_000;
 const TOOL_OUTPUT_TRUNCATE_LENGTH = 1500;
 
-function watcherKey(projectName, sessionId) {
-	return `${projectName}:${sessionId}`;
+function watcherKey(projectName, sessionId, username) {
+	return JSON.stringify([username, projectName, sessionId]);
+}
+
+function findWatcher(projectName, sessionId, username = null) {
+	if (username) return watchers.get(watcherKey(projectName, sessionId, username));
+	for (const [, state] of watchers) {
+		if (state.projectName === projectName && state.sessionId === sessionId) {
+			return state;
+		}
+	}
+	return null;
+}
+
+function isSafeIdentifier(value) {
+	return (
+		typeof value === "string" &&
+		value.length > 0 &&
+		!value.includes("\0") &&
+		value !== "." &&
+		value !== ".." &&
+		!/[/\\]/.test(value) &&
+		path.basename(value) === value
+	);
+}
+
+function resolveWatchPath(projectName, sessionId) {
+	if (!isSafeIdentifier(projectName) || !isSafeIdentifier(sessionId)) {
+		throw new Error("Invalid watcher identifiers");
+	}
+	if (sessionId.startsWith("agent-")) {
+		throw new Error("Agent session journals are not watchable");
+	}
+
+	const root = path.resolve(CLAUDE_PROJECTS);
+	const filePath = path.resolve(root, projectName, `${sessionId}.jsonl`);
+	const relativePath = path.relative(root, filePath);
+	if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+		throw new Error("Watcher path escapes Claude projects directory");
+	}
+	return filePath;
+}
+
+function addLease(state, username, leaseId) {
+	const id = leaseId || username;
+	const existing = state.leases.get(id);
+	if (existing?.graceTimer) clearTimeout(existing.graceTimer);
+	state.leases.set(id, { username, graceTimer: null });
 }
 
 /**
  * Start or reuse a JSONL file watcher for a CLI session.
  * Deduplicates by (projectName, sessionId).
  */
-export async function startWatching(projectName, sessionId, username) {
+export async function startWatching(projectName, sessionId, username, leaseId = username) {
 	if (!projectName || !sessionId || !username) {
 		logger.warn("[FileWatcher] Ignoring watch request with missing fields", {
 			hasProjectName: Boolean(projectName),
@@ -33,32 +79,23 @@ export async function startWatching(projectName, sessionId, username) {
 		return;
 	}
 
-	const key = watcherKey(projectName, sessionId);
-	const existing = watchers.get(key);
-	if (existing) {
-		// Cancel grace timer — client reconnected before expiry
-		clearTimeout(existing.graceTimer);
-		existing.graceTimer = null;
+	let filePath;
+	try {
+		filePath = resolveWatchPath(projectName, sessionId);
+	} catch (err) {
+		logger.warn("[FileWatcher] Ignoring watch request with invalid path", {
+			projectName,
+			sessionId,
+			error: err.message,
+		});
 		return;
 	}
 
-	const filePath = path.join(
-		CLAUDE_PROJECTS,
-		projectName,
-		`${sessionId}.jsonl`,
-	);
-
-	// Read initial file state to establish tail position
-	let lastKnownSize = 0;
-	try {
-		const stats = await fs.stat(filePath);
-		lastKnownSize = stats.size;
-	} catch (err) {
-		// File may not exist yet — watcher will catch it when it appears
-		logger.warn("[FileWatcher] Initial stat failed, will retry via fs.watch", {
-			filePath,
-			error: err.message,
-		});
+	const key = watcherKey(projectName, sessionId, username);
+	const existing = watchers.get(key);
+	if (existing) {
+		addLease(existing, username, leaseId);
+		return;
 	}
 
 	const state = {
@@ -66,20 +103,32 @@ export async function startWatching(projectName, sessionId, username) {
 		sessionId,
 		username,
 		filePath,
-		lastKnownSize,
+		lastKnownSize: 0,
 		lastActivity: Date.now(),
 		hasSeenEntries: false,
 		watcher: null,
 		watcherError: null,
 		statTimer: null,
 		idleTimer: null,
-		graceTimer: null,
 		aborted: false,
 		partialLine: null, // Buffer for partial JSONL lines
 		inFlight: null, // Serialization guard for handleFileChange
+		leases: new Map(),
 	};
-
+	addLease(state, username, leaseId);
 	watchers.set(key, state);
+
+	// Read initial file state to establish tail position
+	try {
+		const stats = await fs.stat(filePath);
+		state.lastKnownSize = stats.size;
+	} catch (err) {
+		// File may not exist yet — watcher will catch it when it appears
+		logger.warn("[FileWatcher] Initial stat failed, will retry via fs.watch", {
+			filePath,
+			error: err.message,
+		});
+	}
 
 	// Set up fs.watch for real-time change notification
 	try {
@@ -113,10 +162,23 @@ export async function startWatching(projectName, sessionId, username) {
 /**
  * Stop watching a CLI session. Called on client unwatch-session or grace expiry.
  */
-export function stopWatching(projectName, sessionId) {
-	const key = watcherKey(projectName, sessionId);
+export function stopWatching(projectName, sessionId, username = null, leaseId = username) {
+	if (!username) {
+		for (const [key, state] of watchers) {
+			if (state.projectName === projectName && state.sessionId === sessionId) {
+				cleanupWatcher(state);
+				watchers.delete(key);
+			}
+		}
+		return;
+	}
+
+	const key = watcherKey(projectName, sessionId, username);
 	const state = watchers.get(key);
 	if (!state) return;
+
+	state.leases.delete(leaseId || username);
+	if (state.leases.size > 0) return;
 
 	cleanupWatcher(state);
 	watchers.delete(key);
@@ -351,7 +413,7 @@ function parseEntryToEvents(entry, sessionId) {
 						timestamp,
 						messageId,
 						model,
-						input: block.input || {},
+						input: sanitizeToolInput(block.name, block.input),
 						startTime: null, // No timing from JSONL
 					},
 				});
@@ -400,18 +462,73 @@ function parseEntryToEvents(entry, sessionId) {
 	return [];
 }
 
+function sanitizeBashCommand(cmd) {
+	if (!cmd || typeof cmd !== "string") return "";
+	const sanitized = cmd
+		.replace(/(-H\s+["']?Authorization:\s*Bearer\s+)[^\s"']+/gi, "$1[REDACTED]")
+		.replace(/(Bearer\s+)[A-Za-z0-9_\-.]{20,}/g, "$1[REDACTED]")
+		.replace(/(-u\s+)[^\s:]+:[^\s@]+(@)/g, "$1[REDACTED]$2")
+		.replace(/(https?:\/\/)[^:@\s]+:[^:@\s]+(@)/g, "$1[REDACTED]$2")
+		.replace(
+			/((?:API_KEY|SECRET|TOKEN|PASSWORD|PASS)\s*=\s*)[^\s;]+/gi,
+			"$1[REDACTED]",
+		);
+	return sanitized.length > 200 ? sanitized.slice(0, 200) : sanitized;
+}
+
+function sanitizeToolInput(tool, input) {
+	if (!input) return {};
+
+	switch (String(tool || "").toLowerCase()) {
+		case "bash":
+			return { command: sanitizeBashCommand(input.command || input.cmd || "") };
+		case "read":
+			return {
+				file_path: input.file_path || input.path,
+				offset: input.offset,
+				limit: input.limit,
+			};
+		case "write":
+			return { file_path: input.file_path || input.path };
+		case "edit":
+			return {
+				file_path: input.file_path || input.path,
+				old_string: String(input.old_string || "").slice(0, 30),
+				new_string: String(input.new_string || "").slice(0, 30),
+			};
+		case "glob":
+			return { pattern: input.pattern, path: input.path };
+		case "grep":
+			return {
+				pattern: input.pattern,
+				path: input.path,
+				glob: input.glob,
+				type: input.type,
+			};
+		case "task":
+			return {
+				description: input.description || input.prompt,
+				subagent_type: input.subagent_type,
+			};
+		default:
+			return {};
+	}
+}
+
 /**
  * Build tool summary object (mirrors transform.js getToolSummary).
  */
 function buildToolSummary(tool, input) {
 	if (!input) return { summary: tool };
 	switch (tool) {
-		case "Bash":
+		case "Bash": {
+			const command = sanitizeBashCommand(input.command || input.cmd || "");
 			return {
-				summary: `$ ${String(input.command || "").slice(0, 80)}`,
-				fullCommand: input.command || "",
-				redacted: true, // Consumer should not emit raw input
+				summary: `$ ${String(command).slice(0, 80)}`,
+				fullCommand: command,
+				redacted: true,
 			};
+		}
 		case "Read": {
 			const filePath = input.file_path || input.path || "";
 			return { summary: `Read ${filePath}`, filePath };
@@ -472,7 +589,7 @@ function scheduleStatPoll(state) {
 					});
 				}
 				cleanupWatcher(state);
-				watchers.delete(watcherKey(state.projectName, state.sessionId));
+				watchers.delete(watcherKey(state.projectName, state.sessionId, state.username));
 				return;
 			}
 		}
@@ -503,14 +620,20 @@ function resetIdleTimer(state) {
 /**
  * Start the grace timer after WS loss.
  */
-export function startGraceTimer(projectName, sessionId) {
-	const key = watcherKey(projectName, sessionId);
-	const state = watchers.get(key);
+export function startGraceTimer(projectName, sessionId, username = null, leaseId = username) {
+	const state = findWatcher(projectName, sessionId, username);
 	if (!state) return;
 
-	if (state.graceTimer) clearTimeout(state.graceTimer);
-	state.graceTimer = setTimeout(() => {
+	const key = watcherKey(state.projectName, state.sessionId, state.username);
+	const id = leaseId || username || state.leases.keys().next().value;
+	const lease = state.leases.get(id);
+	if (!lease) return;
+
+	if (lease.graceTimer) clearTimeout(lease.graceTimer);
+	lease.graceTimer = setTimeout(() => {
 		if (state.aborted) return;
+		state.leases.delete(id);
+		if (state.leases.size > 0) return;
 		cleanupWatcher(state);
 		watchers.delete(key);
 		logger.info("[FileWatcher] Grace period expired, cleaned up", {
@@ -518,29 +641,29 @@ export function startGraceTimer(projectName, sessionId) {
 			sessionId: sessionId.slice(0, 8),
 		});
 	}, GRACE_TIMEOUT_MS);
-	state.graceTimer.unref();
+	lease.graceTimer.unref();
 }
 
 /**
  * Check if a session is being watched.
  */
-export function isWatching(projectName, sessionId) {
-	return watchers.has(watcherKey(projectName, sessionId));
+export function isWatching(projectName, sessionId, username = null) {
+	return Boolean(findWatcher(projectName, sessionId, username));
 }
 
 /**
  * Get all watched session keys for a specific user.
  * Used by the WS close handler to start grace timers.
  */
-export function getWatchersForUser(username) {
+export function getWatchersForUser(username, leaseId = null) {
 	const result = [];
 	for (const [, state] of watchers) {
-		if (state.username === username) {
-			result.push({
-				projectName: state.projectName,
-				sessionId: state.sessionId,
-			});
-		}
+		if (state.username !== username) continue;
+		if (leaseId && !state.leases.has(leaseId)) continue;
+		result.push({
+			projectName: state.projectName,
+			sessionId: state.sessionId,
+		});
 	}
 	return result;
 }
@@ -572,10 +695,10 @@ function cleanupWatcher(state) {
 		state.idleTimer = null;
 	}
 
-	if (state.graceTimer) {
-		clearTimeout(state.graceTimer);
-		state.graceTimer = null;
+	for (const lease of state.leases.values()) {
+		if (lease.graceTimer) clearTimeout(lease.graceTimer);
 	}
+	state.leases.clear();
 
 	// Ensure session marked idle
 	if (state.hasSeenEntries) {

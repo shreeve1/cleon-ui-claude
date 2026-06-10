@@ -149,13 +149,43 @@ describe("file-watcher", () => {
 		expect(isWatching(PROJECT, SESSION)).toBe(true);
 	});
 
-	it("deduplicates by (projectName, sessionId)", async () => {
+	it("deduplicates by (projectName, sessionId, username)", async () => {
 		await startClean();
 
 		await startWatching(PROJECT, SESSION, USER);
 
 		// No second watcher created — initial stat called only once
 		expect(mockStat).toHaveBeenCalledTimes(1);
+	});
+
+	it("deduplicates concurrent starts before the first stat resolves", async () => {
+		let resolveStat;
+		mockStat.mockReturnValue(
+			new Promise((resolve) => {
+				resolveStat = () => resolve({ size: 0, isFile: () => true });
+			}),
+		);
+
+		const first = startWatching(PROJECT, SESSION, USER, "lease-a");
+		const second = startWatching(PROJECT, SESSION, USER, "lease-b");
+		resolveStat();
+		await Promise.all([first, second]);
+
+		expect(mockStat).toHaveBeenCalledTimes(1);
+		expect(isWatching(PROJECT, SESSION, USER)).toBe(true);
+	});
+
+	it("rejects path traversal watcher identifiers", async () => {
+		mockStat.mockResolvedValue({ size: 0, isFile: () => true });
+
+		await startWatching("../secret", SESSION, USER);
+		await startWatching(PROJECT, "../secret", USER);
+		await startWatching(PROJECT, "agent-background", USER);
+
+		expect(mockStat).not.toHaveBeenCalled();
+		expect(isWatching("../secret", SESSION, USER)).toBe(false);
+		expect(isWatching(PROJECT, "../secret", USER)).toBe(false);
+		expect(isWatching(PROJECT, "agent-background", USER)).toBe(false);
 	});
 
 	it("stops watching and cleans up", async () => {
@@ -166,32 +196,44 @@ describe("file-watcher", () => {
 		expect(isWatching(PROJECT, SESSION)).toBe(false);
 	});
 
-	it("diagnostic: stat and open are called after advance with content", async () => {
+	it("unwatch only releases the caller lease", async () => {
+		mockStat.mockResolvedValue({ size: 0, isFile: () => true });
+		await startWatching(PROJECT, SESSION, USER, "lease-a");
+		await startWatching(PROJECT, SESSION, USER, "lease-b");
+
+		stopWatching(PROJECT, SESSION, USER, "lease-a");
+
+		expect(isWatching(PROJECT, SESSION, USER)).toBe(true);
+
+		stopWatching(PROJECT, SESSION, USER, "lease-b");
+
+		expect(isWatching(PROJECT, SESSION, USER)).toBe(false);
+	});
+
+	it("authenticated unwatch cannot stop another user's watcher", async () => {
+		mockStat.mockResolvedValue({ size: 0, isFile: () => true });
+		await startWatching(PROJECT, SESSION, USER, "lease-a");
+
+		stopWatching(PROJECT, SESSION, "other", "lease-a");
+
+		expect(isWatching(PROJECT, SESSION, USER)).toBe(true);
+	});
+
+	it("polls changed files and reads appended content", async () => {
 		vi.useFakeTimers();
 		await startClean();
-		// setup: lastKnownSize=0, mockStat={size:0}
 		mockStat.mockClear();
 		mockOpen.mockClear();
 
 		setFileContent(makeAssistantEntry("Hello world"));
-		// Now mockStat resolves to {size: buf.length}, mockOpen resolves to mockFileHandle
 
 		await vi.advanceTimersByTimeAsync(2100);
 
-		// Stat should be called by poll
 		expect(mockStat.mock.calls.length).toBeGreaterThanOrEqual(1);
-		// Check open called (handleFileChange reaches open)
-		console.log("mockOpen calls:", mockOpen.mock.calls.length);
-		console.log("mockPublish calls:", mockPublish.mock.calls.length);
-		console.log("mockRegister calls:", mockRegister.mock.calls.length);
-
-		// If open was called, read was too
-		if (mockOpen.mock.calls.length > 0) {
-			console.log(
-				"mockFileHandle.read calls:",
-				mockFileHandle.read.mock.calls.length,
-			);
-		}
+		expect(mockOpen.mock.calls.length).toBe(1);
+		expect(mockPublish.mock.calls.length).toBeGreaterThanOrEqual(1);
+		expect(mockRegister.mock.calls.length).toBe(1);
+		expect(mockFileHandle.read.mock.calls.length).toBeGreaterThanOrEqual(1);
 
 		vi.useRealTimers();
 	});
@@ -281,6 +323,34 @@ describe("file-watcher", () => {
 			(ev) => ev.type === "claude-message" && ev.data?.type === "tool_use",
 		);
 		expect(toolEvents).toBe(2);
+
+		vi.useRealTimers();
+	});
+
+	it("sanitizes watcher tool input before publishing", async () => {
+		vi.useFakeTimers();
+		await startClean();
+
+		setFileContent(
+			makeAssistantEntry("", [
+				{
+					name: "Bash",
+					id: "tool-bash-1",
+					input: { command: "curl -H 'Authorization: Bearer abcdefghijklmnopqrstuvwxyz' https://example.com SECRET=shh" },
+				},
+			]),
+		);
+
+		await vi.advanceTimersByTimeAsync(2100);
+
+		const published = mockPublish.mock.calls.find(
+			([, ev]) =>
+				ev.type === "claude-message" && ev.data?.type === "tool_use",
+		);
+		expect(published).toBeDefined();
+		expect(published[1].data.input.command).toContain("[REDACTED]");
+		expect(published[1].data.input.command).not.toContain("abcdefghijklmnopqrstuvwxyz");
+		expect(published[1].data.summary.fullCommand).not.toContain("SECRET=shh");
 
 		vi.useRealTimers();
 	});
@@ -440,6 +510,23 @@ describe("file-watcher", () => {
 		vi.advanceTimersByTime(61_000);
 
 		expect(isWatching(PROJECT, SESSION)).toBe(false);
+
+		vi.useRealTimers();
+	});
+
+	it("grace timer for one lease preserves another live lease", async () => {
+		vi.useFakeTimers();
+		mockStat.mockResolvedValue({ size: 0, isFile: () => true });
+		await startWatching(PROJECT, SESSION, USER, "lease-a");
+		await startWatching(PROJECT, SESSION, USER, "lease-b");
+
+		startGraceTimer(PROJECT, SESSION, USER, "lease-a");
+		vi.advanceTimersByTime(61_000);
+
+		expect(isWatching(PROJECT, SESSION, USER)).toBe(true);
+
+		stopWatching(PROJECT, SESSION, USER, "lease-b");
+		expect(isWatching(PROJECT, SESSION, USER)).toBe(false);
 
 		vi.useRealTimers();
 	});

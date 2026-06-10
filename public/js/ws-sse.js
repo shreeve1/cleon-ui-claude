@@ -324,10 +324,31 @@ function handleWsMessage(msg) {
 	}
 }
 
+function flushBufferedClaudeMessages(session) {
+	const buffered = session.watcherBuffer || [];
+	session.watcherBuffer = [];
+	for (const data of buffered) {
+		handleClaudeMessage(data, session);
+	}
+}
+
+if (typeof window !== "undefined") {
+	window.addEventListener("cleon:history-loaded", (event) => {
+		const session = getSessionBySessionId(event.detail?.sessionId);
+		if (session) flushBufferedClaudeMessages(session);
+	});
+}
+
 function handleClaudeMessage(data, session) {
 	if (!data) return;
 	session = session || getActiveSession();
 	if (!session) return;
+
+	if (session.isLoadingHistory) {
+		session.watcherBuffer = session.watcherBuffer || [];
+		session.watcherBuffer.push(data);
+		return;
+	}
 
 	// --- watcher-text: complete assistant message from JSONL watcher ---
 	if (data.type === "watcher-text") {

@@ -1109,17 +1109,25 @@ async function resumeSession(sessionId, skipHashUpdate = false) {
 	if (!skipHashUpdate) updateHash(session.project.name, sessionId);
 	closeSidebar();
 
-	await loadSessionHistory(session);
-
-	// Watch new session after history load completes
+	// Watch before history load so live JSONL writes are buffered instead of missed.
 	if (state.ws?.readyState === WebSocket.OPEN) {
 		state.ws.send(
 			JSON.stringify({
 				type: "watch-session",
 				projectName: session.project.name,
-				sessionId: session.sessionId,
+				sessionId,
 			}),
 		);
+	}
+
+	await loadSessionHistory(session);
+
+	if (
+		session !== getActiveSession() ||
+		!state.sessions.includes(session) ||
+		session.sessionId !== sessionId
+	) {
+		return;
 	}
 
 	enableChat();

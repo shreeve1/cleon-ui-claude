@@ -290,6 +290,7 @@ const wss = new WebSocketServer({
 // WebSocket connection handler
 wss.on("connection", (ws, req) => {
 	const user = req.user;
+	const watcherLeaseId = Symbol("watcherLease");
 	logger.info("WebSocket connected", { username: user.username });
 
 	ws.isAlive = true;
@@ -347,11 +348,21 @@ wss.on("connection", (ws, req) => {
 				}
 
 				case "watch-session":
-					await startWatching(msg.projectName, msg.sessionId, user.username);
+					await startWatching(
+						msg.projectName,
+						msg.sessionId,
+						user.username,
+						watcherLeaseId,
+					);
 					break;
 
 				case "unwatch-session":
-					stopWatching(msg.projectName, msg.sessionId);
+					stopWatching(
+						msg.projectName,
+						msg.sessionId,
+						user.username,
+						watcherLeaseId,
+					);
 					break;
 
 				case "ping":
@@ -381,8 +392,9 @@ wss.on("connection", (ws, req) => {
 		// Start grace timers for all watchers owned by this user
 		for (const { projectName, sessionId } of getWatchersForUser(
 			user.username,
+			watcherLeaseId,
 		)) {
-			startGraceTimer(projectName, sessionId);
+			startGraceTimer(projectName, sessionId, user.username, watcherLeaseId);
 		}
 	});
 

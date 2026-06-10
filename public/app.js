@@ -261,19 +261,15 @@ function bindSessionContainerEvents() {
 		showContextMenu(messageEl, e.clientX, e.clientY);
 	});
 
-	Dom.sessionContainersEl.addEventListener(
-		"touchstart",
-		(e) => {
-			const messageEl = e.target.closest(".message");
-			if (!messageEl) return;
-			const touch = e.touches[0];
-			longPressTimer = setTimeout(
-				() => showContextMenu(messageEl, touch.clientX, touch.clientY),
-				500,
-			);
-		},
-		{ passive: true },
-	);
+	Dom.sessionContainersEl.addEventListener("touchstart", (e) => {
+		const messageEl = e.target.closest(".message");
+		if (!messageEl) return;
+		const touch = e.touches[0];
+		longPressTimer = setTimeout(
+			() => showContextMenu(messageEl, touch.clientX, touch.clientY),
+			500,
+		);
+	}, { passive: true });
 	Dom.sessionContainersEl.addEventListener("touchend", () =>
 		clearTimeout(longPressTimer),
 	);
