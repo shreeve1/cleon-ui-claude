@@ -336,7 +336,10 @@ describe("file-watcher", () => {
 				{
 					name: "Bash",
 					id: "tool-bash-1",
-					input: { command: "curl -H 'Authorization: Bearer abcdefghijklmnopqrstuvwxyz' https://example.com SECRET=shh" },
+					input: {
+						command:
+							"curl -H 'Authorization: Bearer abcdefghijklmnopqrstuvwxyz' https://example.com SECRET=shh",
+					},
 				},
 			]),
 		);
@@ -344,12 +347,13 @@ describe("file-watcher", () => {
 		await vi.advanceTimersByTimeAsync(2100);
 
 		const published = mockPublish.mock.calls.find(
-			([, ev]) =>
-				ev.type === "claude-message" && ev.data?.type === "tool_use",
+			([, ev]) => ev.type === "claude-message" && ev.data?.type === "tool_use",
 		);
 		expect(published).toBeDefined();
 		expect(published[1].data.input.command).toContain("[REDACTED]");
-		expect(published[1].data.input.command).not.toContain("abcdefghijklmnopqrstuvwxyz");
+		expect(published[1].data.input.command).not.toContain(
+			"abcdefghijklmnopqrstuvwxyz",
+		);
 		expect(published[1].data.summary.fullCommand).not.toContain("SECRET=shh");
 
 		vi.useRealTimers();

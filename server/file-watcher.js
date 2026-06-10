@@ -20,7 +20,8 @@ function watcherKey(projectName, sessionId, username) {
 }
 
 function findWatcher(projectName, sessionId, username = null) {
-	if (username) return watchers.get(watcherKey(projectName, sessionId, username));
+	if (username)
+		return watchers.get(watcherKey(projectName, sessionId, username));
 	for (const [, state] of watchers) {
 		if (state.projectName === projectName && state.sessionId === sessionId) {
 			return state;
@@ -69,7 +70,12 @@ function addLease(state, username, leaseId) {
  * Start or reuse a JSONL file watcher for a CLI session.
  * Deduplicates by (projectName, sessionId).
  */
-export async function startWatching(projectName, sessionId, username, leaseId = username) {
+export async function startWatching(
+	projectName,
+	sessionId,
+	username,
+	leaseId = username,
+) {
 	if (!projectName || !sessionId || !username) {
 		logger.warn("[FileWatcher] Ignoring watch request with missing fields", {
 			hasProjectName: Boolean(projectName),
@@ -162,7 +168,12 @@ export async function startWatching(projectName, sessionId, username, leaseId = 
 /**
  * Stop watching a CLI session. Called on client unwatch-session or grace expiry.
  */
-export function stopWatching(projectName, sessionId, username = null, leaseId = username) {
+export function stopWatching(
+	projectName,
+	sessionId,
+	username = null,
+	leaseId = username,
+) {
 	if (!username) {
 		for (const [key, state] of watchers) {
 			if (state.projectName === projectName && state.sessionId === sessionId) {
@@ -589,7 +600,9 @@ function scheduleStatPoll(state) {
 					});
 				}
 				cleanupWatcher(state);
-				watchers.delete(watcherKey(state.projectName, state.sessionId, state.username));
+				watchers.delete(
+					watcherKey(state.projectName, state.sessionId, state.username),
+				);
 				return;
 			}
 		}
@@ -620,7 +633,12 @@ function resetIdleTimer(state) {
 /**
  * Start the grace timer after WS loss.
  */
-export function startGraceTimer(projectName, sessionId, username = null, leaseId = username) {
+export function startGraceTimer(
+	projectName,
+	sessionId,
+	username = null,
+	leaseId = username,
+) {
 	const state = findWatcher(projectName, sessionId, username);
 	if (!state) return;
 
