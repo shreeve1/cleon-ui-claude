@@ -20,10 +20,19 @@ import {
 	scrollToBottom,
 	appendToolMessage,
 	updateToolResult,
+	removeWelcome,
 } from "./messages.js";
 import { sendNotification } from "./notifications.js";
 import { addTask, updateTask, removeTask, syncTasks } from "./tasks-ui.js";
 import { StreamingRenderer, flushPendingText } from "./streaming.js";
+import {
+	escapeHtml,
+	escapeAttr,
+	formatTimestamp,
+	getShortId,
+} from "./utils.js";
+import { setElementHtml } from "./dom.js";
+import { formatMarkdown } from "./markdown.js";
 
 function connectWebSocket() {
 	if (state.ws?.readyState === WebSocket.OPEN) return;
@@ -36,6 +45,18 @@ function connectWebSocket() {
 	state.ws.onopen = () => {
 		console.log("[WS] Connected (command channel)");
 		state.wsReconnectAttempts = 0;
+
+		// Re-establish file watch on WS reconnect
+		const activeSession = getActiveSession();
+		if (activeSession?.sessionId && state.ws?.readyState === WebSocket.OPEN) {
+			state.ws.send(
+				JSON.stringify({
+					type: "watch-session",
+					projectName: activeSession.project.name,
+					sessionId: activeSession.sessionId,
+				}),
+			);
+		}
 	};
 
 	state.ws.onclose = () => {
@@ -307,6 +328,48 @@ function handleClaudeMessage(data, session) {
 	if (!data) return;
 	session = session || getActiveSession();
 	if (!session) return;
+
+	// --- watcher-text: complete assistant message from JSONL watcher ---
+	if (data.type === "watcher-text") {
+		// Flush any residual streaming state
+		flushPendingText(session);
+
+		// Render as standalone .message.assistant
+		const div = document.createElement("div");
+		div.className = "message assistant";
+
+		// Build metadata header
+		let headerHtml = "";
+		if (data.timestamp || data.messageId || data.model) {
+			headerHtml = '<div class="message-header">';
+			if (data.timestamp) {
+				headerHtml += `<span class="message-timestamp" title="${escapeAttr(data.timestamp)}">${escapeHtml(formatTimestamp(data.timestamp))}</span>`;
+			}
+			if (data.messageId) {
+				headerHtml += `<span class="message-id" title="${escapeAttr(data.messageId)}">· ${escapeHtml(getShortId(data.messageId))}</span>`;
+			}
+			if (data.model) {
+				headerHtml += `<span class="model-badge">${escapeHtml(data.model)}</span>`;
+			}
+			headerHtml += "</div>";
+		}
+
+		// Remove welcome message if present (matches appendMessage() pattern)
+		removeWelcome(session);
+
+		setElementHtml(div, headerHtml + formatMarkdown(data.content));
+
+		// Store metadata on element
+		if (data.timestamp) div.dataset.timestamp = data.timestamp;
+		if (data.messageId) div.dataset.messageId = data.messageId;
+		if (data.model) div.dataset.model = data.model;
+
+		session.containerEl.appendChild(div);
+		scrollToBottom(session);
+
+		// Do NOT touch session.isStreaming, session.pendingText, or session.streamingRenderer
+		return;
+	}
 
 	if (data.type === "text") {
 		session.isStreaming = true;
