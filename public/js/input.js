@@ -1091,12 +1091,44 @@ async function resumeSession(sessionId, skipHashUpdate = false) {
 	const session = getActiveSession();
 	if (!session) return;
 
+	// Unwatch old session before overwriting
+	if (session.sessionId && session.sessionId !== sessionId) {
+		if (state.ws?.readyState === WebSocket.OPEN) {
+			state.ws.send(
+				JSON.stringify({
+					type: "unwatch-session",
+					projectName: session.project.name,
+					sessionId: session.sessionId,
+				}),
+			);
+		}
+	}
+
 	session.sessionId = sessionId;
 	saveSessionState(); // Persist immediately before history load - ensures sessionId survives even if loadSessionHistory fails
 	if (!skipHashUpdate) updateHash(session.project.name, sessionId);
 	closeSidebar();
 
+	// Watch before history load so live JSONL writes are buffered instead of missed.
+	if (state.ws?.readyState === WebSocket.OPEN) {
+		state.ws.send(
+			JSON.stringify({
+				type: "watch-session",
+				projectName: session.project.name,
+				sessionId,
+			}),
+		);
+	}
+
 	await loadSessionHistory(session);
+
+	if (
+		session !== getActiveSession() ||
+		!state.sessions.includes(session) ||
+		session.sessionId !== sessionId
+	) {
+		return;
+	}
 
 	enableChat();
 	saveSessionState();

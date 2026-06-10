@@ -30,6 +30,12 @@ import logger from "./logger.js";
 import { subscribe, publish } from "./bus.js";
 import { getSessionsForUser } from "./session-registry.js";
 import { eventDelivery } from "./event-delivery.js";
+import {
+	startWatching,
+	stopWatching,
+	startGraceTimer,
+	getWatchersForUser,
+} from "./file-watcher.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -284,6 +290,7 @@ const wss = new WebSocketServer({
 // WebSocket connection handler
 wss.on("connection", (ws, req) => {
 	const user = req.user;
+	const watcherLeaseId = Symbol("watcherLease");
 	logger.info("WebSocket connected", { username: user.username });
 
 	ws.isAlive = true;
@@ -292,8 +299,9 @@ wss.on("connection", (ws, req) => {
 	});
 
 	ws.on("message", async (data) => {
+		let msg = {};
 		try {
-			const msg = JSON.parse(data.toString());
+			msg = JSON.parse(data.toString());
 
 			switch (msg.type) {
 				case "chat":
@@ -339,6 +347,24 @@ wss.on("connection", (ws, req) => {
 					break;
 				}
 
+				case "watch-session":
+					await startWatching(
+						msg.projectName,
+						msg.sessionId,
+						user.username,
+						watcherLeaseId,
+					);
+					break;
+
+				case "unwatch-session":
+					stopWatching(
+						msg.projectName,
+						msg.sessionId,
+						user.username,
+						watcherLeaseId,
+					);
+					break;
+
 				case "ping":
 					ws.send(JSON.stringify({ type: "pong" }));
 					break;
@@ -363,6 +389,13 @@ wss.on("connection", (ws, req) => {
 
 	ws.on("close", () => {
 		logger.info("WebSocket disconnected", { username: user.username });
+		// Start grace timers for all watchers owned by this user
+		for (const { projectName, sessionId } of getWatchersForUser(
+			user.username,
+			watcherLeaseId,
+		)) {
+			startGraceTimer(projectName, sessionId, user.username, watcherLeaseId);
+		}
 	});
 
 	ws.on("error", (err) => {
