@@ -8,7 +8,10 @@ const {
 	mockPublish,
 	mockRegister,
 	mockSetStatus,
+	mockWatch,
+	triggerWatch,
 } = vi.hoisted(() => {
+	let watchCallback = null;
 	const mockFileHandle = {
 		_data: "",
 		read: vi.fn((buffer, _offset, _length, position) => {
@@ -29,6 +32,11 @@ const {
 	const mockPublish = vi.fn();
 	const mockRegister = vi.fn();
 	const mockSetStatus = vi.fn();
+	const mockWatch = vi.fn((_filePath, callback) => {
+		watchCallback = callback;
+		return { close: vi.fn(), unref: vi.fn() };
+	});
+	const triggerWatch = (eventType = "change") => watchCallback?.(eventType);
 
 	return {
 		mockFileHandle,
@@ -37,6 +45,8 @@ const {
 		mockPublish,
 		mockRegister,
 		mockSetStatus,
+		mockWatch,
+		triggerWatch,
 	};
 });
 
@@ -44,7 +54,7 @@ vi.mock("fs", async () => {
 	const actual = await vi.importActual("fs");
 	return {
 		...actual,
-		watch: () => ({ close: vi.fn(), unref: vi.fn() }),
+		watch: mockWatch,
 		promises: {
 			...actual.promises,
 			stat: mockStat,
@@ -188,6 +198,46 @@ describe("file-watcher", () => {
 		expect(isWatching(PROJECT, "agent-background", USER)).toBe(false);
 	});
 
+	it("returns invalid result for missing watch identifiers", async () => {
+		mockStat.mockResolvedValue({ size: 0, isFile: () => true });
+
+		await expect(startWatching("", SESSION, USER)).resolves.toEqual(
+			expect.objectContaining({
+				ok: false,
+				error: "Missing watcher identifiers",
+			}),
+		);
+		await expect(startWatching(PROJECT, "", USER)).resolves.toEqual(
+			expect.objectContaining({
+				ok: false,
+				error: "Missing watcher identifiers",
+			}),
+		);
+
+		expect(mockStat).not.toHaveBeenCalled();
+	});
+
+	it("returns invalid result for unsafe watch identifiers", async () => {
+		mockStat.mockResolvedValue({ size: 0, isFile: () => true });
+
+		await expect(startWatching("../secret", SESSION, USER)).resolves.toEqual(
+			expect.objectContaining({
+				ok: false,
+				error: "Invalid watcher identifiers",
+			}),
+		);
+		await expect(
+			startWatching(PROJECT, "agent-background", USER),
+		).resolves.toEqual(
+			expect.objectContaining({
+				ok: false,
+				error: "Agent session journals are not watchable",
+			}),
+		);
+
+		expect(mockStat).not.toHaveBeenCalled();
+	});
+
 	it("stops watching and cleans up", async () => {
 		await startClean();
 
@@ -234,6 +284,58 @@ describe("file-watcher", () => {
 		expect(mockPublish.mock.calls.length).toBeGreaterThanOrEqual(1);
 		expect(mockRegister.mock.calls.length).toBe(1);
 		expect(mockFileHandle.read.mock.calls.length).toBeGreaterThanOrEqual(1);
+
+		vi.useRealTimers();
+	});
+
+	it("processes fs.watch change callbacks", async () => {
+		await startClean();
+		mockPublish.mockClear();
+		setFileContent(makeAssistantEntry("from watch callback"));
+
+		triggerWatch("change");
+
+		await vi.waitFor(() => {
+			expect(mockPublish).toHaveBeenCalledWith(
+				USER,
+				expect.objectContaining({
+					type: "claude-message",
+					sessionId: SESSION,
+					data: expect.objectContaining({
+						type: "watcher-text",
+						content: expect.stringContaining("from watch callback"),
+					}),
+				}),
+			);
+		});
+	});
+
+	it("does not duplicate events when fs.watch and stat poll see the same append", async () => {
+		vi.useFakeTimers();
+		await startClean();
+		mockPublish.mockClear();
+		setFileContent(makeAssistantEntry("single delivery"));
+
+		triggerWatch("change");
+		await vi.waitFor(() => {
+			expect(mockPublish).toHaveBeenCalledWith(
+				USER,
+				expect.objectContaining({
+					type: "claude-message",
+					sessionId: SESSION,
+					data: expect.objectContaining({
+						type: "watcher-text",
+						content: expect.stringContaining("single delivery"),
+					}),
+				}),
+			);
+		});
+		await vi.advanceTimersByTimeAsync(2100);
+
+		const msgEvents = countPublishEvents(
+			(ev) => ev.type === "claude-message" && ev.data?.type === "watcher-text",
+		);
+		expect(msgEvents).toBe(1);
 
 		vi.useRealTimers();
 	});

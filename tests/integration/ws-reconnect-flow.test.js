@@ -164,6 +164,19 @@ describe("WebSocket command-only protocol (server/index.js)", () => {
 	});
 });
 
+describe("watch-session validation (server/index.js)", () => {
+	it("watch-session validation errors publish over SSE instead of ws.send", () => {
+		const watchStart = indexJs.indexOf('case "watch-session"');
+		const watchEnd = indexJs.indexOf('case "unwatch-session"', watchStart);
+		const watchBody = indexJs.slice(watchStart, watchEnd);
+
+		expect(watchBody).toContain("watchResult");
+		expect(watchBody).toContain("publish(user.username");
+		expect(watchBody).toContain('type: "error"');
+		expect(watchBody).toContain("Watch failed:");
+	});
+});
+
 // ─── Old WS subscription protocol removed (server) ──────────────
 describe("old WS subscription protocol removed (server/index.js)", () => {
 	it("no check-active case in WS handler", () => {

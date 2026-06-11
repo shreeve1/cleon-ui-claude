@@ -25,6 +25,7 @@ import {
 	updateScrollFAB,
 	appendMessage,
 	appendToolMessage,
+	updateToolResult,
 } from "./messages.js";
 
 async function readJsonResponse(res, url) {
@@ -485,12 +486,19 @@ async function loadSessionHistory(session) {
 					appendToolMessage(
 						msg.tool,
 						summary,
-						null,
+						msg.id || null,
 						"success",
 						session,
 						toolMetadata,
 						msg.input,
 					);
+				} else if (msg.role === "tool_result") {
+					updateToolResult(msg.id, msg.success, msg.output, session, {
+						timestamp: msg.timestamp || null,
+						messageId: msg.messageId || null,
+						duration: msg.duration || null,
+						startTime: msg.startTime || null,
+					});
 				}
 			}
 			// Scroll to bottom to show most recent messages

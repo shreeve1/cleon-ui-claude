@@ -112,6 +112,7 @@ function handleServerEvent(event) {
 				const localSession = getSessionBySessionId(serverSession.sessionId);
 				if (localSession) {
 					localSession.isStreaming = serverSession.status === "streaming";
+					if (!localSession.isStreaming) localSession.activityState = null;
 				}
 			}
 		}
@@ -132,6 +133,7 @@ function handleServerEvent(event) {
 				modelBtn.disabled = false;
 				attachBtn.disabled = false;
 			}
+			renderActivityStatus(activeSession);
 		}
 		return;
 	}
@@ -140,6 +142,7 @@ function handleServerEvent(event) {
 		const session = getSessionBySessionId(event.sessionId);
 		if (session) {
 			session.isStreaming = event.status === "streaming";
+			if (!session.isStreaming) session.activityState = null;
 			if (state.sessions.indexOf(session) === state.activeSessionIndex) {
 				if (session.isStreaming) {
 					abortBtn.classList.remove("hidden");
@@ -156,6 +159,7 @@ function handleServerEvent(event) {
 					modelBtn.disabled = false;
 					attachBtn.disabled = false;
 				}
+				renderActivityStatus(session);
 			}
 		}
 		return;

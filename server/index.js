@@ -347,14 +347,22 @@ wss.on("connection", (ws, req) => {
 					break;
 				}
 
-				case "watch-session":
-					await startWatching(
+				case "watch-session": {
+					const watchResult = await startWatching(
 						msg.projectName,
 						msg.sessionId,
 						user.username,
 						watcherLeaseId,
 					);
+					if (watchResult?.ok === false) {
+						publish(user.username, {
+							type: "error",
+							sessionId: null,
+							message: `Watch failed: ${watchResult.error}`,
+						});
+					}
 					break;
+				}
 
 				case "unwatch-session":
 					stopWatching(

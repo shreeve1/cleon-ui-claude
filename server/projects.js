@@ -8,6 +8,7 @@ import {
 	extractProjectPath,
 	decodeProjectName,
 } from "./shared/project-paths.js";
+import { jsonlEntryToHistoryMessages } from "./shared/session-jsonl.js";
 
 const router = express.Router();
 
@@ -226,8 +227,9 @@ async function getSessionMessages(projectName, sessionId, limit = 100) {
 				const entry = JSON.parse(line);
 				if (entry.sessionId !== sessionId) continue;
 
-				const msg = parseMessageEntry(entry);
-				if (msg) messages.push(msg);
+				for (const msg of jsonlEntryToHistoryMessages(entry)) {
+					messages.push(msg);
+				}
 			} catch {
 				/* skip malformed */
 			}
@@ -236,115 +238,6 @@ async function getSessionMessages(projectName, sessionId, limit = 100) {
 
 	messages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 	return messages.slice(-limit);
-}
-
-function parseMessageEntry(entry) {
-	const timestamp = entry.timestamp || new Date().toISOString();
-	const messageId = entry.messageId || entry.id || null;
-	const model = entry.model || null;
-
-	if (entry.type === "user" || entry.message?.role === "user") {
-		let text = entry.message?.content;
-		if (Array.isArray(text)) {
-			text = text
-				.filter((t) => t.type === "text")
-				.map((t) => t.text)
-				.join("\n");
-		}
-		if (
-			typeof text === "string" &&
-			text.length > 0 &&
-			!text.startsWith("<") &&
-			!text.startsWith("{")
-		) {
-			return { role: "user", content: text, timestamp, messageId };
-		}
-	}
-
-	if (entry.type === "assistant" || entry.message?.role === "assistant") {
-		const content = entry.message?.content;
-		if (Array.isArray(content)) {
-			const textParts = content
-				.filter((c) => c.type === "text")
-				.map((c) => c.text);
-			if (textParts.length > 0) {
-				return {
-					role: "assistant",
-					content: textParts.join("\n"),
-					timestamp,
-					messageId,
-					model,
-				};
-			}
-
-			const toolUse = content.find((c) => c.type === "tool_use");
-			if (toolUse) {
-				// Build enhanced summary object with full command details
-				const summary = buildToolSummary(toolUse.name, toolUse.input);
-				return {
-					role: "tool",
-					tool: toolUse.name,
-					input: toolUse.input,
-					timestamp,
-					messageId,
-					model,
-					summary,
-				};
-			}
-		}
-		if (typeof content === "string") {
-			return { role: "assistant", content, timestamp, messageId, model };
-		}
-	}
-
-	return null;
-}
-
-/**
- * Build enhanced tool summary with full command details
- * Returns object with summary string and full command details
- */
-function buildToolSummary(tool, input) {
-	if (!input) return { summary: tool };
-
-	const result = { summary: tool };
-
-	switch (tool) {
-		case "Bash":
-			result.summary = `$ ${(input.command || "").slice(0, 80)}`;
-			result.fullCommand = input.command || "";
-			break;
-		case "Read":
-			result.summary = `Read ${input.file_path || input.path || ""}`;
-			result.fullCommand = input.file_path || input.path || "";
-			result.filePath = input.file_path || input.path || "";
-			break;
-		case "Write":
-			result.summary = `Write ${input.file_path || input.path || ""}`;
-			result.fullCommand = input.file_path || input.path || "";
-			result.filePath = input.file_path || input.path || "";
-			break;
-		case "Edit":
-			result.summary = `Edit ${input.file_path || input.path || ""}`;
-			result.fullCommand = input.file_path || input.path || "";
-			result.filePath = input.file_path || input.path || "";
-			break;
-		case "Glob":
-			result.summary = `Find ${input.pattern || ""}`;
-			result.fullCommand = input.pattern || "";
-			result.pattern = input.pattern || "";
-			break;
-		case "Grep":
-			result.summary = `Search ${input.pattern || ""}`;
-			result.fullCommand = input.pattern || "";
-			result.pattern = input.pattern || "";
-			result.fullQuery = input.query || "";
-			break;
-		default:
-			result.summary = tool;
-	}
-
-	return result;
 }
 
 /**
