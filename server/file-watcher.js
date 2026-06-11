@@ -4,6 +4,7 @@ import { watch } from "fs";
 import logger from "./logger.js";
 import { publish } from "./bus.js";
 import { register, setStatus } from "./session-registry.js";
+import { jsonlEntryToLiveEvents } from "./shared/session-jsonl.js";
 import { CLAUDE_PROJECTS } from "./shared/project-paths.js";
 
 // Module-level state
@@ -13,7 +14,6 @@ const watchers = new Map();
 const IDLE_TIMEOUT_MS = 30_000;
 const GRACE_TIMEOUT_MS = 60_000;
 const STAT_POLL_MS = 2_000;
-const TOOL_OUTPUT_TRUNCATE_LENGTH = 1500;
 
 function watcherKey(projectName, sessionId, username) {
 	return JSON.stringify([username, projectName, sessionId]);
@@ -82,7 +82,7 @@ export async function startWatching(
 			hasSessionId: Boolean(sessionId),
 			hasUsername: Boolean(username),
 		});
-		return;
+		return { ok: false, error: "Missing watcher identifiers" };
 	}
 
 	let filePath;
@@ -94,14 +94,14 @@ export async function startWatching(
 			sessionId,
 			error: err.message,
 		});
-		return;
+		return { ok: false, error: err.message };
 	}
 
 	const key = watcherKey(projectName, sessionId, username);
 	const existing = watchers.get(key);
 	if (existing) {
 		addLease(existing, username, leaseId);
-		return;
+		return { ok: true, reused: true };
 	}
 
 	const state = {
@@ -163,6 +163,8 @@ export async function startWatching(
 		sessionId: sessionId.slice(0, 8),
 		filePath,
 	});
+
+	return { ok: true, reused: false };
 }
 
 /**
@@ -291,34 +293,8 @@ function processEntry(line, state) {
 		return; // Skip malformed
 	}
 
-	// Filter: only entries for this session
-	if (entry.sessionId !== state.sessionId) return;
-
-	// Skip user echos (same as live transform behavior).
-	// Allow tool_result entries through — they are user-role blocks.
-	if (entry.type === "user" || entry.message?.role === "user") {
-		const content = entry.message?.content;
-		const hasToolResult =
-			Array.isArray(content) && content.some((c) => c.type === "tool_result");
-		if (!hasToolResult) return; // Pure user echo — skip
-		// Has tool_result — fall through to parseEntryToEvents
-	}
-
-	// Skip result records (handled as separate token-usage event)
-	if (entry.type === "result") return;
-
-	// Skip tool-only assistant entries with AskUserQuestion/ExitPlanMode
-	if (entry.type === "assistant" && entry.message?.content) {
-		const content = entry.message.content;
-		if (Array.isArray(content)) {
-			const hasOnlySkippedTools = content.every(
-				(c) =>
-					c.type === "tool_use" &&
-					(c.name === "AskUserQuestion" || c.name === "ExitPlanMode"),
-			);
-			if (hasOnlySkippedTools) return;
-		}
-	}
+	const events = jsonlEntryToLiveEvents(entry, state.sessionId);
+	if (events.length === 0) return;
 
 	// Register session on first valid entry
 	if (!state.hasSeenEntries) {
@@ -345,227 +321,8 @@ function processEntry(line, state) {
 		});
 	}
 
-	// Parse and map entry to event payload
-	const events = parseEntryToEvents(entry, state.sessionId);
 	for (const event of events) {
 		publish(state.username, event);
-	}
-}
-
-/**
- * Map a JSONL entry to one or more SSE event payloads.
- * Returns array of { type, sessionId, data } objects.
- */
-function parseEntryToEvents(entry, sessionId) {
-	const timestamp = entry.timestamp || new Date().toISOString();
-	const messageId =
-		entry.messageId || entry.id || entry.message?.id || entry.uuid || null;
-	const model = entry.model || entry.message?.model || null;
-
-	// Assistant entry: text and/or tool_use blocks
-	if (entry.type === "assistant" || entry.message?.role === "assistant") {
-		const content = entry.message?.content;
-		if (!Array.isArray(content)) {
-			// String content — single text block
-			if (typeof content === "string" && content.length > 0) {
-				return [
-					{
-						type: "claude-message",
-						sessionId,
-						data: {
-							type: "watcher-text",
-							content,
-							timestamp,
-							messageId,
-							model,
-						},
-					},
-				];
-			}
-			return [];
-		}
-
-		const events = [];
-
-		// Extract text blocks
-		const texts = content.filter((c) => c.type === "text").map((c) => c.text);
-		if (texts.length > 0) {
-			events.push({
-				type: "claude-message",
-				sessionId,
-				data: {
-					type: "watcher-text",
-					content: texts.join("\n"),
-					timestamp,
-					messageId,
-					model,
-				},
-			});
-		}
-
-		// Extract tool_use blocks
-		for (const block of content) {
-			if (block.type === "tool_use") {
-				if (block.name === "AskUserQuestion" || block.name === "ExitPlanMode") {
-					continue; // Not replayable from watcher
-				}
-
-				// Build summary (mirrors transform.js getToolSummary pattern)
-				const summary = buildToolSummary(block.name, block.input);
-
-				events.push({
-					type: "claude-message",
-					sessionId,
-					data: {
-						type: "tool_use",
-						tool: block.name,
-						id: block.id || block.tool_use_id || null,
-						summary,
-						timestamp,
-						messageId,
-						model,
-						input: sanitizeToolInput(block.name, block.input),
-						startTime: null, // No timing from JSONL
-					},
-				});
-			}
-		}
-
-		return events;
-	}
-
-	// User entry with tool_result blocks
-	if (entry.type === "user" || entry.message?.role === "user") {
-		const content = entry.message?.content;
-		if (Array.isArray(content)) {
-			const events = [];
-			for (const block of content) {
-				if (block.type === "tool_result") {
-					const rawOutput =
-						typeof block.content === "string"
-							? block.content
-							: JSON.stringify(block.content);
-					const truncated =
-						rawOutput.length > TOOL_OUTPUT_TRUNCATE_LENGTH
-							? rawOutput.slice(0, TOOL_OUTPUT_TRUNCATE_LENGTH) +
-								"\n... [truncated]"
-							: rawOutput;
-					events.push({
-						type: "claude-message",
-						sessionId,
-						data: {
-							type: "tool_result",
-							id: block.tool_use_id || null,
-							success: !block.is_error,
-							output: truncated,
-							timestamp,
-							messageId,
-							duration: null, // No timing from JSONL
-							startTime: null,
-						},
-					});
-				}
-			}
-			return events;
-		}
-	}
-
-	return [];
-}
-
-function sanitizeBashCommand(cmd) {
-	if (!cmd || typeof cmd !== "string") return "";
-	const sanitized = cmd
-		.replace(/(-H\s+["']?Authorization:\s*Bearer\s+)[^\s"']+/gi, "$1[REDACTED]")
-		.replace(/(Bearer\s+)[A-Za-z0-9_\-.]{20,}/g, "$1[REDACTED]")
-		.replace(/(-u\s+)[^\s:]+:[^\s@]+(@)/g, "$1[REDACTED]$2")
-		.replace(/(https?:\/\/)[^:@\s]+:[^:@\s]+(@)/g, "$1[REDACTED]$2")
-		.replace(
-			/((?:API_KEY|SECRET|TOKEN|PASSWORD|PASS)\s*=\s*)[^\s;]+/gi,
-			"$1[REDACTED]",
-		);
-	return sanitized.length > 200 ? sanitized.slice(0, 200) : sanitized;
-}
-
-function sanitizeToolInput(tool, input) {
-	if (!input) return {};
-
-	switch (String(tool || "").toLowerCase()) {
-		case "bash":
-			return { command: sanitizeBashCommand(input.command || input.cmd || "") };
-		case "read":
-			return {
-				file_path: input.file_path || input.path,
-				offset: input.offset,
-				limit: input.limit,
-			};
-		case "write":
-			return { file_path: input.file_path || input.path };
-		case "edit":
-			return {
-				file_path: input.file_path || input.path,
-				old_string: String(input.old_string || "").slice(0, 30),
-				new_string: String(input.new_string || "").slice(0, 30),
-			};
-		case "glob":
-			return { pattern: input.pattern, path: input.path };
-		case "grep":
-			return {
-				pattern: input.pattern,
-				path: input.path,
-				glob: input.glob,
-				type: input.type,
-			};
-		case "task":
-			return {
-				description: input.description || input.prompt,
-				subagent_type: input.subagent_type,
-			};
-		default:
-			return {};
-	}
-}
-
-/**
- * Build tool summary object (mirrors transform.js getToolSummary).
- */
-function buildToolSummary(tool, input) {
-	if (!input) return { summary: tool };
-	switch (tool) {
-		case "Bash": {
-			const command = sanitizeBashCommand(input.command || input.cmd || "");
-			return {
-				summary: `$ ${String(command).slice(0, 80)}`,
-				fullCommand: command,
-				redacted: true,
-			};
-		}
-		case "Read": {
-			const filePath = input.file_path || input.path || "";
-			return { summary: `Read ${filePath}`, filePath };
-		}
-		case "Write": {
-			const filePath = input.file_path || input.path || "";
-			return { summary: `Write ${filePath}`, filePath };
-		}
-		case "Edit": {
-			const filePath = input.file_path || input.path || "";
-			return { summary: `Edit ${filePath}`, filePath };
-		}
-		case "Glob": {
-			const pattern = input.pattern || "";
-			return { summary: `Find ${pattern}`, pattern };
-		}
-		case "Grep": {
-			const pattern = input.pattern || input.query || "";
-			return {
-				summary: `Search ${String(pattern).slice(0, 80)}`,
-				pattern,
-				fullQuery: input.query || pattern || "",
-			};
-		}
-		default:
-			return { summary: tool };
 	}
 }
 
